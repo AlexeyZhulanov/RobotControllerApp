@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +39,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.robotcontrollerapp.R
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.model.WsState
+import kotlin.collections.chunked
+import kotlin.collections.forEach
 
 @Composable
 fun ControllerScreen(
@@ -50,9 +51,18 @@ fun ControllerScreen(
     val boardInfo by viewModel.boardInfo.collectAsState()
     val devices by viewModel.devices.collectAsState()
     val sensorData by viewModel.sensorData.collectAsState()
+    var showLogs by remember { mutableStateOf(false) }
+    val logFlow = viewModel.logs
+    var logList by remember { mutableStateOf(listOf<String>()) }
 
     LaunchedEffect(devices) {
         viewModel.subscribeAllSensors(devices)
+    }
+
+    LaunchedEffect(logFlow) {
+        logFlow.collect { msg ->
+            logList = (logList + msg).takeLast(100)
+        }
     }
 
     DisposableEffect(Unit) {
@@ -68,7 +78,8 @@ fun ControllerScreen(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
                 boardName = boardInfo,
                 wsState = wsState,
-                onSettingsClick = onOpenPinEditor
+                onSettingsClick = onOpenPinEditor,
+                onLogsClick = { showLogs = true }
             )
 
             Column(Modifier.padding(top = 80.dp, bottom = 270.dp),
@@ -81,7 +92,7 @@ fun ControllerScreen(
                 CustomButtons(
                     modifier = Modifier.weight(1f),
                     width = width,
-                    devices = devices,
+                    devices = devices.filter { it.type != "sensor" && it.type != "motor" },
                     onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
                 )
             }
@@ -111,24 +122,34 @@ fun ControllerScreen(
                     }
                 }
             )
+            if (showLogs) {
+                LogsDialog(logs = logList, onDismiss = { showLogs = false })
+            }
         }
     }
 }
 
 @Composable
-fun TopBar(modifier: Modifier, boardName: String, wsState: WsState, onSettingsClick: () -> Unit) {
+fun TopBar(
+    modifier: Modifier,
+    boardName: String,
+    wsState: WsState,
+    onSettingsClick: () -> Unit,
+    onLogsClick: () -> Unit
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp)
     ) {
         Image(
-            painter = painterResource(R.drawable.ic_arrow_back),
+            painter = painterResource(R.drawable.ic_chat),
             contentDescription = "BackArrow",
             modifier = Modifier
                 .size(45.dp)
                 .background(Color.LightGray, RoundedCornerShape(8.dp))
                 .padding(4.dp)
+                .clickable(onClick = { onLogsClick() })
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(text = boardName, color = Color.Black, fontSize = 20.sp)
@@ -156,45 +177,80 @@ fun TopBar(modifier: Modifier, boardName: String, wsState: WsState, onSettingsCl
 
 @Composable
 fun Sensors(modifier: Modifier, width: Dp, data: Map<String, Float>) {
-    FlowRow(
+    Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.SpaceAround,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        maxItemsInEachRow = 5
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         val count = data.size
         val sCount = maxOf(2, count)
         val widthForEach = maxOf(width / (sCount + 1), width / 6)
-        data.forEach { (key, value) ->
-            key(value) {
-                Sensor(
-                    size = widthForEach,
-                    name = key,
-                    value = value
-                )
+        val chunkedMaps = data.toList()
+            .chunked(2)
+            .map { it.toMap() }
+
+        chunkedMaps.forEach { rowMaps ->
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                rowMaps.forEach { (key, value) ->
+                    key(key) {
+                        Sensor(
+                            size = widthForEach,
+                            name = key,
+                            value = value
+                        )
+                    }
+                }
             }
         }
     }
+//    FlowRow(
+//        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
+//        horizontalArrangement = Arrangement.SpaceAround,
+//        verticalArrangement = Arrangement.spacedBy(10.dp),
+//        maxItemsInEachRow = 5
+//    ) {
+//        val count = data.size
+//        val sCount = maxOf(2, count)
+//        val widthForEach = maxOf(width / (sCount + 1), width / 6)
+//        data.forEach { (key, value) ->
+//            key(key) {
+//                Sensor(
+//                    size = widthForEach,
+//                    name = key,
+//                    value = value
+//                )
+//            }
+//        }
+//    }
 }
 
 @Composable
 fun CustomButtons(modifier: Modifier, width: Dp, devices: List<Device>, onDeviceToggle: (Device, Boolean) -> Unit) {
-    FlowRow(
+    Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.SpaceAround,
-        verticalArrangement = Arrangement.spacedBy(25.dp),
-        maxItemsInEachRow = 3
+        verticalArrangement = Arrangement.spacedBy(15.dp)
     ) {
+        val chunked = devices.chunked(3)
         val count = devices.size
         val sCount = maxOf(2, count)
         val widthForEach = maxOf(width / (sCount + 1), width / 4)
-        devices.forEach { device ->
-            key(device) {
-                CustomButton(
-                    size = widthForEach,
-                    device = device,
-                    onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
-                )
+
+        chunked.forEach { rowDevices ->
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                rowDevices.forEach { device ->
+                    key(device) {
+                        CustomButton(
+                            size = widthForEach,
+                            device = device,
+                            onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
+                        )
+                    }
+                }
             }
         }
     }
@@ -233,7 +289,7 @@ fun CustomButton(size: Dp, device: Device, onDeviceToggle: (Device, Boolean) -> 
             modifier = Modifier.fillMaxHeight(fraction = 0.9f).fillMaxWidth()
         ) {
             val fs = (size / 7).value
-            Image(painter = painterResource(R.drawable.ic_bluetooth), contentDescription = "IconButton", modifier = Modifier.weight(3f).fillMaxWidth())
+            Image(painter = painterResource(R.drawable.ic_bulb), contentDescription = "IconButton", modifier = Modifier.weight(3f).fillMaxWidth())
             Text(text = device.name, color = Color.Black, fontSize = fs.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
         }
     }

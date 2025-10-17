@@ -25,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.robotcontrollerapp.domain.Device
+import com.example.robotcontrollerapp.util.dToGpio
 import kotlin.math.hypot
 
 @Composable
@@ -52,11 +54,15 @@ fun PinEditorScreen(
 ) {
     val devices by viewModel.devices.collectAsState()
     val boardName by viewModel.boardName.collectAsState()
+    val detectedPins by viewModel.detectedPins.collectAsState()
 
-    var assigned by remember { mutableStateOf(devices.associateBy { it.pin }.toMutableMap()) }
+    var assigned by remember { mutableStateOf(mutableMapOf<Int, Device>()) }
 
     var selectedPin by remember { mutableStateOf<Int?>(null) }
-    var showDialog by remember { mutableStateOf(false) }
+    var selectedType by remember { mutableStateOf<String?>(null) }
+    var showTypeDialog by remember { mutableStateOf(false) }
+    var showUnbindDialog by remember { mutableStateOf(false) }
+    var showNameDialog by remember { mutableStateOf(false) }
 
     // drag state for the palette item
     var draggingItem by remember { mutableStateOf<String?>(null) }
@@ -65,6 +71,14 @@ fun PinEditorScreen(
     var boardSize by remember { mutableStateOf(IntSize.Zero) }
 
     val pinPositions = remember { mutableStateMapOf<Int, Offset>() }
+
+    LaunchedEffect(devices) {
+        assigned = devices.associateBy { it.pin }.toMutableMap()
+    }
+
+    val unassignedDetected = detectedPins.filterNot { detected ->
+        assigned.keys.contains(detected.pin)
+    }.map { it.pin }.toSet()
 
     Box(Modifier.fillMaxSize().navigationBarsPadding().statusBarsPadding().padding(4.dp)) {
         Column {
@@ -75,7 +89,10 @@ fun PinEditorScreen(
             ) {
                 Text("🔧 $boardName", style = MaterialTheme.typography.headlineSmall, fontSize = 22.sp)
                 Spacer(Modifier.size(12.dp))
-                Button(onClick = { viewModel.saveConfig(assigned.values.toList()) }, modifier = Modifier.weight(1f)) {
+                Button(onClick = { showUnbindDialog = true }) {
+                    Text("Отвязать")
+                }
+                Button(onClick = { viewModel.saveConfig(assigned.values.toList()) }, modifier = Modifier) {
                     Text("Сохранить")
                 }
             }
@@ -110,11 +127,11 @@ fun PinEditorScreen(
                 WemosD1MiniBoard(
                     modifier = Modifier.fillMaxHeight(fraction = 0.7f),
                     boardStyle = BoardStyle(pinSize = 24.dp, pinOverlap = 10.dp),
-                    assignedPins = assigned.keys,
+                    devices = devices,
+                    detectedPins = unassignedDetected,
                     onPinClicked = { pin ->
-                        Log.d("testPin", "CLICKED: ${pin.number}")
                         selectedPin = pin.number
-                        showDialog = true
+                        showTypeDialog = true // todo если привязан, то диалог отвязки именно этого пина сделать
                     },
                     onPinPositionChanged = { pin, center ->
                         pinPositions[pin] = center
@@ -190,13 +207,54 @@ fun PinEditorScreen(
                 }
             }
         }
-        if (showDialog && selectedPin != null) {
-            DeviceTypeDialog(pin = selectedPin!!, onSelect = { type ->
-                assigned = assigned.toMutableMap().apply {
-                    put(selectedPin!!, Device(name = "${type}_${selectedPin}", pin = selectedPin!!, type = type))
-                }
-                showDialog = false
-            }, onCancel = { showDialog = false })
+        // choose type // todo !! убрать
+        if (showTypeDialog && selectedPin != null) {
+            Log.d("testUnbindNotWork", "assigned: $assigned, pin: $selectedPin, devices: $devices")
+            val alreadyAssigned = assigned.containsKey(selectedPin)
+            if (alreadyAssigned) {
+                UnbindDialogSingle(
+                    pin = selectedPin!!,
+                    device = assigned[selectedPin!!]!!,
+                    onConfirm = {
+                        assigned = assigned.toMutableMap().apply { remove(selectedPin!!) }
+                        showTypeDialog = false
+                    },
+                    onCancel = { showTypeDialog = false }
+                )
+            } else {
+                DeviceTypeDialog(pin = selectedPin!!, onSelect = { type ->
+                    selectedType = type
+                    showTypeDialog = false
+                    showNameDialog = true
+                }, onCancel = { showTypeDialog = false })
+            }
+        }
+
+        if (showNameDialog && selectedPin != null && selectedType != null) {
+            NameInputDialog(
+                defaultName = "${selectedType}_${selectedPin}",
+                onConfirm = { name ->
+                    assigned = assigned.toMutableMap().apply {
+                        put(
+                            selectedPin!!,
+                            Device(name = name, pin = selectedPin!!, type = selectedType!!)
+                        )
+                    }
+                    showNameDialog = false
+                    viewModel.onDeviceSelected(Device(name, selectedPin!!, selectedType!!))
+                },
+                onDismiss = { showNameDialog = false }
+            )
+        }
+        if (showUnbindDialog) {
+            UnbindDialog(
+                devices = assigned.values.toList(),
+                onUnbind = { device ->
+                    assigned.remove(device.pin)
+                    showUnbindDialog = false
+                },
+                onDismiss = { showUnbindDialog = false }
+            )
         }
     }
 }

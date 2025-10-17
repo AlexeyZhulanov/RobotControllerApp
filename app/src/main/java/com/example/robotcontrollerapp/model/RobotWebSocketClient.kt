@@ -2,6 +2,7 @@ package com.example.robotcontrollerapp.model
 
 import com.example.robotcontrollerapp.domain.DetectedPin
 import com.example.robotcontrollerapp.domain.Device
+import com.example.robotcontrollerapp.util.gpioToD
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
 import org.json.JSONArray
@@ -237,7 +238,7 @@ class RobotWebSocketClient(
                     }
                     val pwm = if (d.has("pwmValue")) d.optInt("pwmValue", 0) else 0
                     // your Device class might differ; adapt constructor
-                    list.add(Device(name = name, pin = pin, type = type, state = state, pwm = pwm))
+                    list.add(Device(name = name, pin = gpioToD(pin), type = type, state = state, pwm = pwm))
                 }
                 onDevicesList?.invoke(list)
                 return

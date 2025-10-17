@@ -28,7 +28,7 @@ class RobotControlViewModel @Inject constructor() : ViewModel() {
     private val _sensorData = MutableStateFlow<Map<String, Float>>(emptyMap())
     val sensorData = _sensorData.asStateFlow()
 
-    private val _logs = MutableSharedFlow<String>(replay = 50)
+    private val _logs = MutableSharedFlow<String>(replay = 100)
     val logs = _logs.asSharedFlow()
 
     init {

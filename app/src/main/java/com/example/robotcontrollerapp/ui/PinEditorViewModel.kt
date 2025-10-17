@@ -1,6 +1,7 @@
 package com.example.robotcontrollerapp.ui
 
 import androidx.lifecycle.ViewModel
+import com.example.robotcontrollerapp.domain.DetectedPin
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.model.RobotWebSocketClient
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,13 +16,24 @@ class PinEditorViewModel @Inject constructor() : ViewModel() {
     private val _devices = MutableStateFlow<List<Device>>(emptyList())
     val devices = _devices.asStateFlow()
 
+    private val _detectedPins = MutableStateFlow<List<DetectedPin>>(emptyList())
+    val detectedPins = _detectedPins.asStateFlow()
+
     private val _boardName = MutableStateFlow("Unknown")
     val boardName = _boardName.asStateFlow()
 
     init {
         wsClient.onBoardInfo = { board, _ -> _boardName.value = board }
         wsClient.onDevicesList = { list -> _devices.value = list }
+        wsClient.onDetectedPins = { pins -> _detectedPins.value = pins }
+        wsClient.onDeviceAdded = { n, p, t -> _devices.value = _devices.value + Device(n, p, t) }
         wsClient.connect()
+        wsClient.requestDetectedPins()
+        wsClient.requestDevices()
+    }
+
+    fun onDeviceSelected(device: Device) {
+        _devices.value = _devices.value + device
     }
 
     fun saveConfig(devices: List<Device>) {
