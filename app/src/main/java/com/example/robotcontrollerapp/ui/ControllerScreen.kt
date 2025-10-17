@@ -1,0 +1,246 @@
+package com.example.robotcontrollerapp.ui
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.example.robotcontrollerapp.R
+import com.example.robotcontrollerapp.domain.Device
+import com.example.robotcontrollerapp.model.WsState
+
+@Composable
+fun ControllerScreen(
+    viewModel: RobotControlViewModel = hiltViewModel(),
+    onOpenPinEditor: () -> Unit
+) {
+    val wsState by viewModel.wsState.collectAsState()
+    val boardInfo by viewModel.boardInfo.collectAsState()
+    val devices by viewModel.devices.collectAsState()
+    val sensorData by viewModel.sensorData.collectAsState()
+
+    LaunchedEffect(devices) {
+        viewModel.subscribeAllSensors(devices)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.unsubscribeAllSensors(devices)
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFC6C5C9))) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+            val width = maxWidth
+            TopBar(
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                boardName = boardInfo,
+                wsState = wsState,
+                onSettingsClick = onOpenPinEditor
+            )
+
+            Column(Modifier.padding(top = 80.dp, bottom = 270.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Sensors(
+                    modifier = Modifier.weight(1f),
+                    width = width,
+                    data = sensorData
+                )
+                CustomButtons(
+                    modifier = Modifier.weight(1f),
+                    width = width,
+                    devices = devices,
+                    onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
+                )
+            }
+
+            Joystick(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
+                size = 200.dp,
+                onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
+                    val motors = devices.filter { it.type == "motor" }
+                    when(motors.size) {
+                        0 -> {
+                            // нет моторов — ничего не делаем
+                        }
+                        1 -> {
+                            // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
+                            val motor = motors[0]
+                            // вызываем viewModel, передаём signed speed
+                            viewModel.setMotorSpeed(motor, leftPwmSigned)
+                        }
+                        else -> {
+                            // два или более — используем первые два как лев/право
+                            val leftMotor = motors[0]
+                            val rightMotor = motors[1]
+                            viewModel.setMotorSpeed(leftMotor, leftPwmSigned)
+                            viewModel.setMotorSpeed(rightMotor, rightPwmSigned)
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun TopBar(modifier: Modifier, boardName: String, wsState: WsState, onSettingsClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp)
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_arrow_back),
+            contentDescription = "BackArrow",
+            modifier = Modifier
+                .size(45.dp)
+                .background(Color.LightGray, RoundedCornerShape(8.dp))
+                .padding(4.dp)
+        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text = boardName, color = Color.Black, fontSize = 20.sp)
+            val stateText = when (wsState) {
+                WsState.CONNECTED -> "Подключено"
+                WsState.CONNECTING -> "Подключение..."
+                WsState.CLOSED -> "Отключено"
+                WsState.ERROR -> "Ошибка"
+            }
+            val stateColor = when (wsState) {
+                WsState.CONNECTED -> Color(0xFF4CAF50)
+                WsState.CONNECTING -> Color(0xFFFFC107)
+                WsState.CLOSED -> Color.LightGray
+                WsState.ERROR -> Color.Red
+            }
+            Text(text = stateText, color = stateColor, fontSize = 16.sp)
+        }
+        Image(
+            painter = painterResource(R.drawable.ic_chip),
+            contentDescription = "MicroChip",
+            modifier = Modifier.size(45.dp).clickable { onSettingsClick() }
+        )
+    }
+}
+
+@Composable
+fun Sensors(modifier: Modifier, width: Dp, data: Map<String, Float>) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        maxItemsInEachRow = 5
+    ) {
+        val count = data.size
+        val sCount = maxOf(2, count)
+        val widthForEach = maxOf(width / (sCount + 1), width / 6)
+        data.forEach { (key, value) ->
+            key(value) {
+                Sensor(
+                    size = widthForEach,
+                    name = key,
+                    value = value
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CustomButtons(modifier: Modifier, width: Dp, devices: List<Device>, onDeviceToggle: (Device, Boolean) -> Unit) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalArrangement = Arrangement.spacedBy(25.dp),
+        maxItemsInEachRow = 3
+    ) {
+        val count = devices.size
+        val sCount = maxOf(2, count)
+        val widthForEach = maxOf(width / (sCount + 1), width / 4)
+        devices.forEach { device ->
+            key(device) {
+                CustomButton(
+                    size = widthForEach,
+                    device = device,
+                    onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun Sensor(size: Dp, name: String, value: Float) {
+    Box(modifier = Modifier.size(size).background(Color.White, RoundedCornerShape(16.dp)), contentAlignment = Alignment.CenterStart) {
+        Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxHeight(fraction = 0.8f).padding(start = 8.dp)) {
+            val fs1 = (size / 5.7f).value
+            val fs2 = (size / 3.2f).value
+            Text(text = name, color = Color.Gray, fontSize = fs1.sp)
+            Text(text = value.toString(), color = Color.Black, fontSize = fs2.sp)
+        }
+    }
+}
+
+@Composable
+fun CustomButton(size: Dp, device: Device, onDeviceToggle: (Device, Boolean) -> Unit) {
+    var isOn by remember { mutableStateOf(device.state) }
+    Box(
+        modifier = Modifier
+            .size(size)
+            .fillMaxSize()
+            .background(if (isOn) Color(0xFF81C784) else Color(0xFFF0F0F0),
+                RoundedCornerShape(16.dp))
+            .clickable(onClick = {
+                isOn = !isOn
+                onDeviceToggle(device, isOn)
+            }),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxHeight(fraction = 0.9f).fillMaxWidth()
+        ) {
+            val fs = (size / 7).value
+            Image(painter = painterResource(R.drawable.ic_bluetooth), contentDescription = "IconButton", modifier = Modifier.weight(3f).fillMaxWidth())
+            Text(text = device.name, color = Color.Black, fontSize = fs.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+@Preview
+fun TestControllerScreen() {
+    ControllerScreen(onOpenPinEditor = {})
+}
