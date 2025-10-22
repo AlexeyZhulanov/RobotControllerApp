@@ -21,21 +21,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.times
-import androidx.compose.ui.unit.toSize
 import com.example.robotcontrollerapp.domain.Device
-import com.example.robotcontrollerapp.util.dToGpio
-import com.example.robotcontrollerapp.util.gpioToD
 
 data class BoardPin(
     val name: String,
@@ -63,8 +61,7 @@ fun UniversalBoardFinalV2(
     showLabels: Boolean = true,
     devices: List<Device> = emptyList(),
     detectedPins: Set<Int> = emptySet(),
-    onPinClicked: (BoardPin) -> Unit,
-    onPinPositionChanged: (pinNumber: Int, center: Offset) -> Unit = { _, _ -> }
+    onPinClicked: (BoardPin) -> Unit
 ) {
     Box(
         modifier = modifier
@@ -104,7 +101,13 @@ fun UniversalBoardFinalV2(
                 .offset(x = -boardStyle.pinOverlap)
         ) {
             leftPins.forEach { pin ->
-                val assignedType = devices.find { it.pin == pin.number }?.type
+                val assignedDevice = devices.find { it.pin == pin.number }
+                val (assignedType, assignedName) = if(assignedDevice != null) {
+                    assignedDevice.type to assignedDevice.name
+                } else {
+                    val device2 = devices.find { it.pin2 == pin.number && it.pin2 != null }
+                    device2?.type to (device2?.name?.let { "$it+" })
+                }
                 val color = when {
                     assignedType != null -> {
                         when(assignedType) {
@@ -122,8 +125,8 @@ fun UniversalBoardFinalV2(
                     boardStyle = boardStyle,
                     showLabel = showLabels,
                     color = color,
-                    onPinClicked = { onPinClicked(it) },
-                    onPinPositionChanged = onPinPositionChanged
+                    name = assignedName,
+                    onPinClicked = { onPinClicked(it) }
                 )
             }
         }
@@ -138,7 +141,13 @@ fun UniversalBoardFinalV2(
                 0.dp
             }
 
-            val assignedType = devices.find { it.pin == pin.number }?.type
+            val assignedDevice = devices.find { it.pin == pin.number }
+            val (assignedType, assignedName) = if(assignedDevice != null) {
+                assignedDevice.type to assignedDevice.name
+            } else {
+                val device2 = devices.find { it.pin2 == pin.number && it.pin2 != null }
+                device2?.type to (device2?.name?.let { "$it+" })
+            }
             val color = when {
                 assignedType != null -> {
                     when(assignedType) {
@@ -161,8 +170,8 @@ fun UniversalBoardFinalV2(
                     boardStyle = boardStyle,
                     showLabel = showLabels,
                     color = color,
-                    onPinClicked = { onPinClicked(it) },
-                    onPinPositionChanged = onPinPositionChanged
+                    name = assignedName,
+                    onPinClicked = { onPinClicked(it) }
                 )
             }
         }
@@ -191,8 +200,7 @@ fun WemosD1MiniBoard(
     showLabels: Boolean = true,
     devices: List<Device> = emptyList(),
     detectedPins: Set<Int> = emptySet(),
-    onPinClicked: (BoardPin) -> Unit,
-    onPinPositionChanged: (pinNumber: Int, center: Offset) -> Unit = { _, _ -> }
+    onPinClicked: (BoardPin) -> Unit
 ) {
     UniversalBoardFinalV2(
         modifier = modifier,
@@ -203,8 +211,7 @@ fun WemosD1MiniBoard(
         showLabels = showLabels,
         devices = devices,
         detectedPins = detectedPins,
-        onPinClicked = { onPinClicked(it) },
-        onPinPositionChanged = onPinPositionChanged
+        onPinClicked = { onPinClicked(it) }
     )
 }
 
@@ -214,26 +221,35 @@ fun LeftPinRowFinal(
     boardStyle: BoardStyle,
     showLabel: Boolean,
     color: Color,
-    onPinClicked: (BoardPin) -> Unit,
-    onPinPositionChanged: (pinNumber: Int, center: Offset) -> Unit
+    name: String?,
+    onPinClicked: (BoardPin) -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clickable(onClick = { onPinClicked(pin) })
-            .onGloballyPositioned { coords ->
-                pin.number?.let { num ->
-                    val center = coords.localToRoot(coords.size.toSize().center)
-                    onPinPositionChanged(num, center)
-                }
-            }
     ) {
         PinCircle(boardStyle = boardStyle, color = color)
         if (showLabel) {
             Spacer(modifier = Modifier.width(8.dp))
+            val finalName = buildAnnotatedString {
+                // Первая часть - сам пин
+                withStyle(style = SpanStyle(color = Color.White)) {
+                    append(pin.name)
+                }
+                // Вторая часть - пользовательское название пина
+                if (name != null) {
+                    withStyle(style = SpanStyle(
+                        color = Color(0xFFE69168),
+                        fontSize = 14.sp,
+                        baselineShift = BaselineShift(0.1f)
+                    )) {
+                        append(" [$name]")
+                    }
+                }
+            }
             Text(
-                text = pin.name,
-                color = boardStyle.textColor,
+                text = finalName,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -247,24 +263,33 @@ fun RightPinRowFinal(
     boardStyle: BoardStyle,
     showLabel: Boolean,
     color: Color,
-    onPinClicked: (BoardPin) -> Unit,
-    onPinPositionChanged: (pinNumber: Int, center: Offset) -> Unit
+    name: String?,
+    onPinClicked: (BoardPin) -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clickable(onClick = { onPinClicked(pin) })
-            .onGloballyPositioned { coords ->
-                pin.number?.let { num ->
-                    val center = coords.localToRoot(coords.size.toSize().center)
-                    onPinPositionChanged(num, center)
-                }
-            }
     ) {
         if (showLabel) {
+            val finalName = buildAnnotatedString {
+                // Первая часть - пользовательское название пина
+                if (name != null) {
+                    withStyle(style = SpanStyle(
+                        color = Color(0xFFE69168),
+                        fontSize = 14.sp,
+                        baselineShift = BaselineShift(0.1f)
+                    )) {
+                        append("[$name] ")
+                    }
+                }
+                // Вторая часть - сам пин
+                withStyle(style = SpanStyle(color = Color.White)) {
+                    append(pin.name)
+                }
+            }
             Text(
-                text = pin.name,
-                color = boardStyle.textColor,
+                text = finalName,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -291,27 +316,24 @@ fun PinCircle(
 // Пины для Wemos D1 Mini
 fun getWemosLeftPins(): List<BoardPin> {
     return listOf(
-        BoardPin("D0", gpioToD(16)),  // GPIO16
-        BoardPin("D1", gpioToD(5)),   // GPIO5
-        BoardPin("D2", gpioToD(4)),   // GPIO4
-        BoardPin("D3", gpioToD(0)),   // GPIO0
-        BoardPin("D4", gpioToD(2)),   // GPIO2 (встроенный LED)
-        BoardPin("D5", gpioToD(14)),  // GPIO14
-        BoardPin("D6", gpioToD(12)),  // GPIO12
-        BoardPin("D7", gpioToD(13)),  // GPIO13
-        BoardPin("D8", gpioToD(15))   // GPIO15
+        BoardPin("D0", 0),
+        BoardPin("D1", 1),
+        BoardPin("D2", 2),
+        BoardPin("D3/D15", 3),
+        BoardPin("D4/D14", 4),
+        BoardPin("D5/D13", 5),
+        BoardPin("D6/D12", 6),
+        BoardPin("D7/D11", 7),
+        BoardPin("D8", 8)
     )
 }
 
 fun getWemosRightPins(): List<BoardPin> {
     return listOf(
-        BoardPin("3V3", null), // Питание 3.3В
+        BoardPin("D9", 9),
+        BoardPin("D10", 10),
         BoardPin("GND", null), // Земля
-        BoardPin("TX", gpioToD(1)),     // GPIO1 (UART TX)
-        BoardPin("RX", gpioToD(3)),     // GPIO3 (UART RX)
-        BoardPin("A0", gpioToD(17)),    // Аналоговый вход (особый случай, не GPIO)
-        BoardPin("RST", null), // Reset
-        BoardPin("5V", null)   // Питание 5В
+        BoardPin("A0", 17), // Пока что 17, если что можно поменять
     )
 }
 

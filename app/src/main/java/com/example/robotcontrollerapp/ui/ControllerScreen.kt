@@ -261,7 +261,7 @@ fun Sensor(size: Dp, name: String, value: Float) {
     Box(modifier = Modifier.size(size).background(Color.White, RoundedCornerShape(16.dp)), contentAlignment = Alignment.CenterStart) {
         Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxHeight(fraction = 0.8f).padding(start = 8.dp)) {
             val fs1 = (size / 5.7f).value
-            val fs2 = (size / 3.2f).value
+            val fs2 = (size / 3.4f).value
             Text(text = name, color = Color.Gray, fontSize = fs1.sp)
             Text(text = value.toString(), color = Color.Black, fontSize = fs2.sp)
         }

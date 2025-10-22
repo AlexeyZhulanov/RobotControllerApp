@@ -3,6 +3,7 @@ package com.example.robotcontrollerapp.domain
 data class Device(
     val name: String,
     val pin: Int,
+    val pin2: Int? = null, // дополнительный пин (необязательный)
     val type: String,
     var state: Boolean = false,
     var pwm: Int = 0

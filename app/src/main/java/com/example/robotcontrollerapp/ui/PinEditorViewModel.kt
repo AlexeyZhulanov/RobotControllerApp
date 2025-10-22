@@ -26,7 +26,7 @@ class PinEditorViewModel @Inject constructor() : ViewModel() {
         wsClient.onBoardInfo = { board, _ -> _boardName.value = board }
         wsClient.onDevicesList = { list -> _devices.value = list }
         wsClient.onDetectedPins = { pins -> _detectedPins.value = pins }
-        wsClient.onDeviceAdded = { n, p, t -> _devices.value = _devices.value + Device(n, p, t) }
+        wsClient.onDeviceAdded = { n, p, t -> _devices.value = _devices.value + Device(n, p, type = t) }
         wsClient.connect()
         wsClient.requestDetectedPins()
         wsClient.requestDevices()
@@ -34,6 +34,10 @@ class PinEditorViewModel @Inject constructor() : ViewModel() {
 
     fun onDeviceSelected(device: Device) {
         _devices.value = _devices.value + device
+    }
+
+    fun onDeviceRemoved(device: Device) {
+        _devices.value = _devices.value - device
     }
 
     fun saveConfig(devices: List<Device>) {
@@ -50,7 +54,11 @@ class PinEditorViewModel @Inject constructor() : ViewModel() {
         val sb = StringBuilder()
         sb.append("{\"cmd\":\"set_config\",\"config\":{\"devices\":[")
         devices.forEachIndexed { i, d ->
-            sb.append("{\"name\":\"${d.name}\",\"pin\":${d.pin},\"type\":\"${d.type}\"}")
+            sb.append("{\"name\":\"${d.name}\",\"pin\":${d.pin},\"type\":\"${d.type}\"")
+            if (d.type == "motor" && d.pin2 != null) {
+                sb.append(",\"pin2\":${d.pin2}")
+            }
+            sb.append("}")
             if (i != devices.lastIndex) sb.append(",")
         }
         sb.append("]}}")
