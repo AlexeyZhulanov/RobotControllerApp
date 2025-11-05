@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -28,6 +29,7 @@ import kotlin.math.sin
 fun Joystick(
     modifier: Modifier = Modifier,
     size: Dp = 200.dp,
+    enabled: Boolean = true,
     onMotorsChanged: (leftSpeed: Int, rightSpeed: Int) -> Unit
 ) {
     val radius = size / 2
@@ -36,7 +38,11 @@ fun Joystick(
     Box(
         modifier = modifier
             .size(size)
-            .pointerInput(Unit) {
+            .graphicsLayer {
+                alpha = if (enabled) 1.0f else 0.3f
+            }
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
                 detectDragGestures(
                     onDrag = { change, dragAmount ->
                         change.consume()

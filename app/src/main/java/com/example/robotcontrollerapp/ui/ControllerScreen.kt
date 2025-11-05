@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,12 +34,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.robotcontrollerapp.R
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.model.WsState
+import kotlinx.coroutines.delay
 import kotlin.collections.chunked
 import kotlin.collections.forEach
 
@@ -96,12 +99,14 @@ fun ControllerScreen(
                     onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
                 )
             }
-
+            val motors = remember(devices) {
+                devices.filter { it.type == "motor" }
+            }
             Joystick(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
                 size = 200.dp,
+                enabled = motors.isNotEmpty(),
                 onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
-                    val motors = devices.filter { it.type == "motor" }
                     when(motors.size) {
                         0 -> {
                             // нет моторов — ничего не делаем
@@ -153,19 +158,12 @@ fun TopBar(
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(text = boardName, color = Color.Black, fontSize = 20.sp)
-            val stateText = when (wsState) {
-                WsState.CONNECTED -> "Подключено"
-                WsState.CONNECTING -> "Подключение..."
-                WsState.CLOSED -> "Отключено"
-                WsState.ERROR -> "Ошибка"
+            when(wsState) {
+                WsState.CONNECTED -> Text(text = "Подключено", color = Color(0xFF4CAF50), fontSize = 16.sp)
+                WsState.CONNECTING -> AnimatedConnectingText()
+                WsState.CLOSED -> Text(text = "Отключено", color = Color.LightGray, fontSize = 16.sp)
+                WsState.ERROR -> Text(text = "Ошибка", color = Color.Red, fontSize = 16.sp)
             }
-            val stateColor = when (wsState) {
-                WsState.CONNECTED -> Color(0xFF4CAF50)
-                WsState.CONNECTING -> Color(0xFFFFC107)
-                WsState.CLOSED -> Color.LightGray
-                WsState.ERROR -> Color.Red
-            }
-            Text(text = stateText, color = stateColor, fontSize = 16.sp)
         }
         Image(
             painter = painterResource(R.drawable.ic_chip),
@@ -293,6 +291,29 @@ fun CustomButton(size: Dp, device: Device, onDeviceToggle: (Device, Boolean) -> 
             Text(text = device.name, color = Color.Black, fontSize = fs.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
         }
     }
+}
+
+@Composable
+fun AnimatedConnectingText(
+    modifier: Modifier = Modifier,
+    baseText: String = "Подключение",
+    fontSize: TextUnit = 16.sp
+) {
+    var dotCount by remember { mutableIntStateOf(1) }
+
+    // Этот эффект будет запускаться один раз и работать, пока компонент на экране
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(500) // Пауза в полсекунды
+            dotCount = (dotCount % 3) + 1 // Циклично меняем количество точек: 1 -> 2 -> 3 -> 1
+        }
+    }
+
+    Text(
+        text = "$baseText${".".repeat(dotCount)}",
+        modifier = modifier,
+        fontSize = fontSize
+    )
 }
 
 @Composable

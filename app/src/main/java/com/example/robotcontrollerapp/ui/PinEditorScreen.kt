@@ -1,10 +1,10 @@
 package com.example.robotcontrollerapp.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -17,14 +17,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -55,10 +58,14 @@ fun PinEditorScreen(
 
     var assigned by remember { mutableStateOf(mutableMapOf<Int, Device>()) }
 
+    var savedAssigned by remember { mutableStateOf<Map<Int, Device>>(emptyMap()) }
+
     var selectedPin by remember { mutableStateOf<Int?>(null) }
     var showConfigDialog by remember { mutableStateOf(false) }
     var showUnbindDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showUnsavedDialog by remember { mutableStateOf(false) }
+    var onSaveClicked by remember { mutableStateOf(false) }
 
     LaunchedEffect(devices) {
         assigned = buildMap {
@@ -77,11 +84,30 @@ fun PinEditorScreen(
         assigned.keys.contains(detected.pin)
     }.map { it.pin }.toSet()
 
+    val hasUnsavedChanges = remember(assigned, onSaveClicked) {
+        if(savedAssigned.isEmpty()) {
+            savedAssigned = assigned
+            false
+        } else if(onSaveClicked) {
+            onSaveClicked = false
+            savedAssigned = emptyMap()
+            false
+        } else true
+    }
+
+    // Он будет активен, только если есть несохраненные изменения
+    BackHandler(enabled = hasUnsavedChanges) {
+        // Вместо выхода, показываем диалог
+        showUnsavedDialog = true
+    }
+
     Box(Modifier.fillMaxSize().navigationBarsPadding().statusBarsPadding().padding(horizontal = 4.dp)) {
         TopAppBar(
             title = { Text("🔧 $boardName") },
             navigationIcon = {
-                IconButton(onClick = { onBack() }) {
+                IconButton(onClick = {
+                    if(hasUnsavedChanges) showUnsavedDialog = true else onBack()
+                }) {
                     Icon(
                         painter = painterResource(R.drawable.ic_arrow_back),
                         contentDescription = "Назад"
@@ -90,10 +116,17 @@ fun PinEditorScreen(
             },
             actions = {
                 // 1. Кнопка "Сохранить" в виде иконки
-                IconButton(onClick = { viewModel.saveConfig(devices) }) {
+                IconButton(
+                    onClick = {
+                        viewModel.saveConfig(devices)
+                        onSaveClicked = true
+                    },
+                    enabled = hasUnsavedChanges
+                ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_done),
-                        contentDescription = "Сохранить"
+                        contentDescription = "Сохранить",
+                        tint = if(hasUnsavedChanges) Color.Green else LocalContentColor.current
                     )
                 }
 
@@ -195,6 +228,30 @@ fun PinEditorScreen(
                     showUnbindDialog = false
                 },
                 onDismiss = { showUnbindDialog = false }
+            )
+        }
+        if (showUnsavedDialog) {
+            AlertDialog(
+                onDismissRequest = { showUnsavedDialog = false },
+                title = { Text("Выйти без сохранения?") },
+                text = { Text("У вас есть несохраненные изменения. Вы уверены, что хотите выйти?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showUnsavedDialog = false
+                            onBack() // Выполняем реальный выход
+                        }
+                    ) {
+                        Text("Да, выйти")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showUnsavedDialog = false } // Просто закрываем диалог
+                    ) {
+                        Text("Отмена")
+                    }
+                }
             )
         }
     }
