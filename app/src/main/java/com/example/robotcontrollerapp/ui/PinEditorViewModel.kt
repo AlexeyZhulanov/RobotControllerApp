@@ -1,12 +1,17 @@
 package com.example.robotcontrollerapp.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.robotcontrollerapp.domain.DetectedPin
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.model.RobotWebSocketClient
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -22,6 +27,9 @@ class PinEditorViewModel @Inject constructor() : ViewModel() {
     private val _boardName = MutableStateFlow("Unknown")
     val boardName = _boardName.asStateFlow()
 
+    private val _errorFlow = MutableSharedFlow<String>()
+    val errorFlow = _errorFlow.asSharedFlow()
+
     init {
         wsClient.onBoardInfo = { board, _ -> _boardName.value = board }
         wsClient.onDevicesList = { list -> _devices.value = list }
@@ -33,7 +41,10 @@ class PinEditorViewModel @Inject constructor() : ViewModel() {
     }
 
     fun onDeviceSelected(device: Device) {
-        _devices.value = _devices.value + device
+        val names = _devices.value.map { it.name }.toSet()
+        if(device.name !in names) {
+            _devices.value = _devices.value + device
+        } else showError("Ошибка: Такое имя уже занято")
     }
 
     fun onDeviceRemoved(device: Device) {
@@ -41,8 +52,15 @@ class PinEditorViewModel @Inject constructor() : ViewModel() {
     }
 
     fun saveConfig(devices: List<Device>) {
+        Log.d("testSaveCfg", devices.toString())
         val json = buildConfigJson(devices)
         wsClient.send(json)
+    }
+
+    private fun showError(message: String) {
+        viewModelScope.launch {
+            _errorFlow.emit(message)
+        }
     }
 
     override fun onCleared() {

@@ -1,6 +1,5 @@
 package com.example.robotcontrollerapp.ui
 
-import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -136,7 +135,7 @@ fun DeviceConfigDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DeviceTypeSelector(
+fun DeviceTypeSelector(
     types: List<DeviceTypeInfo>,
     selectedType: DeviceTypeInfo,
     onTypeSelected: (DeviceTypeInfo) -> Unit

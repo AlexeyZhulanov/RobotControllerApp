@@ -31,6 +31,9 @@ class RobotControlViewModel @Inject constructor() : ViewModel() {
     private val _logs = MutableSharedFlow<String>(replay = 100)
     val logs = _logs.asSharedFlow()
 
+    private val _subscribedSensorNames = MutableStateFlow<Set<String>>(emptySet())
+    val subscribedSensorNames = _subscribedSensorNames.asStateFlow()
+
     init {
         setupClient()
         wsClient.connect()
@@ -51,10 +54,15 @@ class RobotControlViewModel @Inject constructor() : ViewModel() {
         wsClient.onDevicesList = { list ->
             Log.d("testDevicesList", list.toString())
             _devices.value = list
+            val newSet = list.filter { it.type == "sensor" }.map { it.name }.toSet()
+            _subscribedSensorNames.value = newSet
         }
 
         wsClient.onSensorUpdate = { name, value ->
-            _sensorData.value = _sensorData.value + (name to value)
+            if (subscribedSensorNames.value.contains(name)) {
+                Log.d("testSensor", "name: $name, value: $value")
+                _sensorData.value = _sensorData.value + (name to value)
+            }
         }
     }
 

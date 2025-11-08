@@ -1,5 +1,6 @@
 package com.example.robotcontrollerapp.ui
 
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -102,31 +104,51 @@ fun ControllerScreen(
             val motors = remember(devices) {
                 devices.filter { it.type == "motor" }
             }
-            Joystick(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
-                size = 200.dp,
-                enabled = motors.isNotEmpty(),
-                onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
-                    when(motors.size) {
-                        0 -> {
-                            // нет моторов — ничего не делаем
+            when(motors.size) {
+                in 0..2 -> {
+                    Joystick(
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
+                        size = 200.dp,
+                        enabled = motors.isNotEmpty(),
+                        onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
+                            when(motors.size) {
+                                0 -> {
+                                    // нет моторов — ничего не делаем
+                                }
+                                1 -> {
+                                    // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
+                                    val motor = motors[0]
+                                    // вызываем viewModel, передаём signed speed
+                                    viewModel.setMotorSpeed(motor, leftPwmSigned)
+                                }
+                                else -> {
+                                    // два мотора - используем первые два как лев/право
+                                    val leftMotor = motors[0]
+                                    val rightMotor = motors[1]
+                                    viewModel.setMotorSpeed(leftMotor, leftPwmSigned)
+                                    viewModel.setMotorSpeed(rightMotor, rightPwmSigned)
+                                }
+                            }
                         }
-                        1 -> {
-                            // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
-                            val motor = motors[0]
-                            // вызываем viewModel, передаём signed speed
-                            viewModel.setMotorSpeed(motor, leftPwmSigned)
-                        }
-                        else -> {
-                            // два или более — используем первые два как лев/право
-                            val leftMotor = motors[0]
-                            val rightMotor = motors[1]
-                            viewModel.setMotorSpeed(leftMotor, leftPwmSigned)
-                            viewModel.setMotorSpeed(rightMotor, rightPwmSigned)
-                        }
-                    }
+                    )
                 }
-            )
+                else -> {
+                    // три мотора
+                    MotorControl(
+                        modifier = Modifier.height(270.dp).align(Alignment.BottomCenter),
+                        motors = motors,
+                        onCommand = { motorName, motorSpeed ->
+                            val motor = motors.find { it.name == motorName }
+                            if (motor != null) {
+                                viewModel.setMotorSpeed(motor, motorSpeed)
+                            } else {
+                                // Сюда код не должен попасть, но это хорошая проверка
+                                Log.e("MotorControl", "Ошибка: мотор с именем $motorName не найден!")
+                            }
+                        }
+                    )
+                }
+            }
             if (showLogs) {
                 LogsDialog(logs = logList, onDismiss = { showLogs = false })
             }
@@ -256,11 +278,12 @@ fun CustomButtons(modifier: Modifier, width: Dp, devices: List<Device>, onDevice
 
 @Composable
 fun Sensor(size: Dp, name: String, value: Float) {
+    val finalName = if(name.length > 9) name.replace("_sensor", "") else name
     Box(modifier = Modifier.size(size).background(Color.White, RoundedCornerShape(16.dp)), contentAlignment = Alignment.CenterStart) {
         Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxHeight(fraction = 0.8f).padding(start = 8.dp)) {
             val fs1 = (size / 5.7f).value
             val fs2 = (size / 3.4f).value
-            Text(text = name, color = Color.Gray, fontSize = fs1.sp)
+            Text(text = finalName, color = Color.Gray, fontSize = fs1.sp)
             Text(text = value.toString(), color = Color.Black, fontSize = fs2.sp)
         }
     }

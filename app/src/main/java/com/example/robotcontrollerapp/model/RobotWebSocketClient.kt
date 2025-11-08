@@ -1,5 +1,6 @@
 package com.example.robotcontrollerapp.model
 
+import android.util.Log
 import com.example.robotcontrollerapp.domain.DetectedPin
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.util.gpioToD
@@ -30,7 +31,6 @@ class RobotWebSocketClient(
     var onDeviceStateChanged: ((String, Boolean) -> Unit)? = null
     var onBoardInfo: ((String, String) -> Unit)? = null // boardName, chipId
     var onDevicesList: ((List<Device>) -> Unit)? = null
-    var onPinChanged: ((Int, Int) -> Unit)? = null
     var onDetectedPins: ((List<DetectedPin>) -> Unit)? = null
     var onStatus: ((Long, Int) -> Unit)? = null
     var onSpeedChanged: ((String, Int) -> Unit)? = null
@@ -264,6 +264,26 @@ class RobotWebSocketClient(
                 return
             }
 
+            // uno_sensors (пакетное обновление с Arduino Uno)
+            if (o.optString("cmd") == "uno_sensors" && o.has("data")) {
+                val dataString = o.optString("data") // "512,1023,44,..."
+                if (dataString.isNotEmpty()) {
+                    val sensorValues = dataString.split(",")
+                    // Проходим по каждому значению в строке
+                    sensorValues.forEachIndexed { index, valueString ->
+                        // Генерируем имя, соответствующее пину (A0, A1, ...)
+                        val sensorName = "uno_sensor_A${index}"
+                        val value = valueString.toFloatOrNull()
+
+                        // Отправляем обновление, как будто это обычный 'sensor_update'
+                        if (value != null) {
+                            onSensorUpdate?.invoke(sensorName, value)
+                        }
+                    }
+                }
+                return
+            }
+
             // device_state (single device update broadcast)
             if (o.has("device") && o.has("state") && (o.optString("cmd") == "device_state" || o.has("device") && !o.has("devices"))) {
                 val name = o.getString("device")
@@ -274,26 +294,6 @@ class RobotWebSocketClient(
                     else -> false
                 }
                 onDeviceStateChanged?.invoke(name, state)
-                return
-            }
-
-            // pin_changed
-            if (o.optString("cmd") == "pin_changed") {
-                val pin = o.optInt("pin", -1)
-                val state = o.optInt("state", -1)
-                onPinChanged?.invoke(pin, state)
-                return
-            }
-
-            // detected_pins
-            if (o.optString("cmd") == "detected_pins" && o.has("pins")) {
-                val arr = o.getJSONArray("pins")
-                val pins = mutableListOf<DetectedPin>()
-                for (i in 0 until arr.length()) {
-                    val p = arr.getJSONObject(i)
-                    pins.add(DetectedPin(p.optInt("pin"), p.optInt("state"), p.optString("mode")))
-                }
-                onDetectedPins?.invoke(pins)
                 return
             }
 
