@@ -169,7 +169,6 @@ private fun IndividualMotorControls(
             )
         }
     ) {
-        //val test = listOf(Device("motor_9_8", 1, type = ""), Device("motor_10_11", 2, type = ""), Device("motor_5_6", 3, type = ""))
 
         motors.forEach { motor ->
             Box(
@@ -195,7 +194,7 @@ private fun IndividualMotorControls(
                     text = "Мотор (${pins})",
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White,
-                    fontSize = 14.sp,
+                    fontSize = if(motors.size == 3) 14.sp else 12.sp,
                     modifier = Modifier.align(Alignment.TopCenter)
                 )
                 // Сам Слайдер

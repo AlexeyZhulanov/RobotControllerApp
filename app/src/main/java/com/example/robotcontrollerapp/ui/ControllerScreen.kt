@@ -133,7 +133,7 @@ fun ControllerScreen(
                     )
                 }
                 else -> {
-                    // три мотора
+                    // три или четыре мотора
                     MotorControl(
                         modifier = Modifier.height(270.dp).align(Alignment.BottomCenter),
                         motors = motors,
@@ -282,7 +282,7 @@ fun Sensor(size: Dp, name: String, value: Float) {
     Box(modifier = Modifier.size(size).background(Color.White, RoundedCornerShape(16.dp)), contentAlignment = Alignment.CenterStart) {
         Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxHeight(fraction = 0.8f).padding(start = 8.dp)) {
             val fs1 = (size / 5.7f).value
-            val fs2 = (size / 3.4f).value
+            val fs2 = (size / 3.5f).value
             Text(text = finalName, color = Color.Gray, fontSize = fs1.sp)
             Text(text = value.toString(), color = Color.Black, fontSize = fs2.sp)
         }
