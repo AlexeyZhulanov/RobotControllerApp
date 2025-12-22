@@ -3,9 +3,8 @@ package com.example.robotcontrollerapp.ui
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.robotcontrollerapp.domain.DetectedPin
 import com.example.robotcontrollerapp.domain.Device
-import com.example.robotcontrollerapp.model.RobotWebSocketClient
+import com.example.robotcontrollerapp.model.RobotRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,29 +14,28 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class PinEditorViewModel @Inject constructor() : ViewModel() {
-    private val wsClient = RobotWebSocketClient("ws://192.168.4.1:81")
-
+class PinEditorViewModel @Inject constructor(
+    private val repository: RobotRepository
+) : ViewModel() {
     private val _devices = MutableStateFlow<List<Device>>(emptyList())
     val devices = _devices.asStateFlow()
 
-    private val _detectedPins = MutableStateFlow<List<DetectedPin>>(emptyList())
-    val detectedPins = _detectedPins.asStateFlow()
-
-    private val _boardName = MutableStateFlow("Unknown")
-    val boardName = _boardName.asStateFlow()
+    val detectedPins = repository.detectedPins
+    val boardName = repository.boardName
 
     private val _errorFlow = MutableSharedFlow<String>()
     val errorFlow = _errorFlow.asSharedFlow()
 
     init {
-        wsClient.onBoardInfo = { board, _ -> _boardName.value = board }
-        wsClient.onDevicesList = { list -> _devices.value = list }
-        wsClient.onDetectedPins = { pins -> _detectedPins.value = pins }
-        wsClient.onDeviceAdded = { n, p, t -> _devices.value = _devices.value + Device(n, p, type = t) }
-        wsClient.connect()
-        wsClient.requestDetectedPins()
-        wsClient.requestDevices()
+        viewModelScope.launch {
+            // Если еще не подключены - ищем, если подключены - просто работаем
+            repository.searchAndConnect()
+            repository.requestDetectedPins()
+            repository.requestDevices()
+            repository.devices.collect { repoDevices ->
+                _devices.value = repoDevices
+            }
+        }
     }
 
     fun onDeviceSelected(device: Device) {
@@ -54,18 +52,13 @@ class PinEditorViewModel @Inject constructor() : ViewModel() {
     fun saveConfig(devices: List<Device>) {
         Log.d("testSaveCfg", devices.toString())
         val json = buildConfigJson(devices)
-        wsClient.send(json)
+        repository.send(json)
     }
 
     private fun showError(message: String) {
         viewModelScope.launch {
             _errorFlow.emit(message)
         }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        wsClient.close()
     }
 
     private fun buildConfigJson(devices: List<Device>): String {

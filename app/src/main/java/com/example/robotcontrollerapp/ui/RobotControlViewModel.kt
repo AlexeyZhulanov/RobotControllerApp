@@ -1,109 +1,81 @@
 package com.example.robotcontrollerapp.ui
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.robotcontrollerapp.domain.Device
-import com.example.robotcontrollerapp.model.RobotWebSocketClient
-import com.example.robotcontrollerapp.model.WsState
+import com.example.robotcontrollerapp.model.RobotRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class RobotControlViewModel @Inject constructor() : ViewModel() {
-    private val wsClient = RobotWebSocketClient("ws://192.168.4.1:81")
+class RobotControlViewModel @Inject constructor(
+    private val repository: RobotRepository
+) : ViewModel() {
 
-    private val _wsState = MutableStateFlow(WsState.CLOSED)
-    val wsState = _wsState.asStateFlow()
+    val devices = repository.devices
+    val wsState = repository.wsState
+    val logs = repository.logs // todo можно использовать потом
+    val boardInfo = repository.boardInfo
 
-    private val _devices = MutableStateFlow<List<Device>>(emptyList())
-    val devices = _devices.asStateFlow()
+    // --- ЛОГИКА ФИЛЬТРАЦИИ СЕНСОРОВ ---
+    private val subscribedSensorNames = devices.map { deviceList ->
+        deviceList
+            .filter { it.type.trim().equals("sensor", ignoreCase = true) }
+            .map { it.name }
+            .toSet()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    private val _boardInfo = MutableStateFlow("Unknown board")
-    val boardInfo = _boardInfo.asStateFlow()
-
-    private val _sensorData = MutableStateFlow<Map<String, Float>>(emptyMap())
-    val sensorData = _sensorData.asStateFlow()
-
-    private val _logs = MutableSharedFlow<String>(replay = 100)
-    val logs = _logs.asSharedFlow()
-
-    private val _subscribedSensorNames = MutableStateFlow<Set<String>>(emptySet())
-    val subscribedSensorNames = _subscribedSensorNames.asStateFlow()
+    // sensorData будет содержать только те сенсоры, которые есть в subscribedSensorNames
+    val sensorData = combine(repository.sensorData, subscribedSensorNames) { allSensors, mySubscriptions ->
+        allSensors.filterKeys { it in mySubscriptions }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     init {
-        setupClient()
-        wsClient.connect()
-        refreshDevices()
-    }
-
-    private fun setupClient() {
-        wsClient.onStateChanged = { _wsState.value = it }
-        wsClient.onLog = {
-            Log.d("testLog", it)
-            _logs.tryEmit(it)
-        }
-
-        wsClient.onBoardInfo = { board, chip ->
-            _boardInfo.value = "$board ($chip)"
-        }
-
-        wsClient.onDevicesList = { list ->
-            Log.d("testDevicesList", list.toString())
-            _devices.value = list
-            val newSet = list.filter { it.type == "sensor" }.map { it.name }.toSet()
-            _subscribedSensorNames.value = newSet
-        }
-
-        wsClient.onSensorUpdate = { name, value ->
-            if (subscribedSensorNames.value.contains(name)) {
-                Log.d("testSensor", "name: $name, value: $value")
-                _sensorData.value = _sensorData.value + (name to value)
-            }
+        viewModelScope.launch {
+            repository.searchAndConnect()
+            refreshDevices()
         }
     }
+
 
     fun toggleDevice(device: Device, on: Boolean) {
-        wsClient.setDeviceState(device.name, on)
+        repository.setDeviceState(device.name, on)
     }
 
     fun setMotorSpeed(device: Device, speed: Int) {
-        wsClient.setMotorSpeed(device.name, speed)
+        repository.setMotorSpeed(device.name, speed)
     }
 
     fun subscribeSensor(name: String) {
-        wsClient.subscribeSensor(name)
+        repository.subscribeSensor(name)
     }
 
     fun unsubscribeSensor(name: String) {
-        wsClient.unsubscribeSensor(name)
+        repository.unsubscribeSensor(name)
     }
 
     fun refreshDevices() {
-        wsClient.requestDevices()
+        repository.requestDevices()
     }
 
     fun refreshBoardStatus() {
-        wsClient.requestBoardStatus()
+        repository.requestBoardStatus()
     }
 
     fun subscribeAllSensors(devices: List<Device>) {
         devices
             .filter { it.type == "sensor" }
-            .forEach { d -> wsClient.subscribeSensor(d.name) }
+            .forEach { d -> repository.subscribeSensor(d.name) }
     }
 
     fun unsubscribeAllSensors(devices: List<Device>) {
         devices
             .filter { it.type == "sensor" }
-            .forEach { d -> wsClient.unsubscribeSensor(d.name) }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        wsClient.close()
+            .forEach { d -> repository.unsubscribeSensor(d.name) }
     }
 }

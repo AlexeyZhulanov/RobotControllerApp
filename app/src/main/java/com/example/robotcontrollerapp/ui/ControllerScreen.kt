@@ -1,5 +1,6 @@
 package com.example.robotcontrollerapp.ui
 
+import android.content.res.Configuration
 import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -47,6 +50,16 @@ import kotlinx.coroutines.delay
 import kotlin.collections.chunked
 import kotlin.collections.forEach
 
+sealed interface ControllerScreenLayoutParams {
+    // todo params (modifier, alignment, dp...)
+    object Portrait : ControllerScreenLayoutParams {
+        // todo override params
+    }
+    object Landscape : ControllerScreenLayoutParams {
+        // todo override params
+    }
+}
+
 @Composable
 fun ControllerScreen(
     viewModel: RobotControlViewModel = hiltViewModel(),
@@ -56,18 +69,10 @@ fun ControllerScreen(
     val boardInfo by viewModel.boardInfo.collectAsState()
     val devices by viewModel.devices.collectAsState()
     val sensorData by viewModel.sensorData.collectAsState()
-    var showLogs by remember { mutableStateOf(false) }
-    val logFlow = viewModel.logs
-    var logList by remember { mutableStateOf(listOf<String>()) }
+    var showCamera by remember { mutableStateOf(false) }
 
     LaunchedEffect(devices) {
         viewModel.subscribeAllSensors(devices)
-    }
-
-    LaunchedEffect(logFlow) {
-        logFlow.collect { msg ->
-            logList = (logList + msg).takeLast(100)
-        }
     }
 
     DisposableEffect(Unit) {
@@ -76,15 +81,22 @@ fun ControllerScreen(
         }
     }
 
+    // Получаем текущую ориентацию экрана (книжная или альбомная)
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val layoutConfig = remember(isLandscape) {
+        if(isLandscape) ControllerScreenLayoutParams.Landscape else ControllerScreenLayoutParams.Portrait
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFFC6C5C9))) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             val width = maxWidth
             TopBar(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
-                boardName = boardInfo,
+                boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
                 wsState = wsState,
                 onSettingsClick = onOpenPinEditor,
-                onLogsClick = { showLogs = true }
+                onCameraClick = { showCamera = !showCamera }
             )
 
             Column(Modifier.padding(top = 80.dp, bottom = 270.dp),
@@ -100,6 +112,9 @@ fun ControllerScreen(
                     devices = devices.filter { it.type != "sensor" && it.type != "motor" },
                     onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
                 )
+                if(showCamera) {
+                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.DarkGray))
+                }
             }
             val motors = remember(devices) {
                 devices.filter { it.type == "motor" }
@@ -149,9 +164,6 @@ fun ControllerScreen(
                     )
                 }
             }
-            if (showLogs) {
-                LogsDialog(logs = logList, onDismiss = { showLogs = false })
-            }
         }
     }
 }
@@ -162,7 +174,7 @@ fun TopBar(
     boardName: String,
     wsState: WsState,
     onSettingsClick: () -> Unit,
-    onLogsClick: () -> Unit
+    onCameraClick: () -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -170,13 +182,12 @@ fun TopBar(
         modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp)
     ) {
         Image(
-            painter = painterResource(R.drawable.ic_chat),
-            contentDescription = "BackArrow",
+            painter = painterResource(R.drawable.ic_cam),
+            contentDescription = "CameraMode",
             modifier = Modifier
                 .size(45.dp)
-                .background(Color.LightGray, RoundedCornerShape(8.dp))
-                .padding(4.dp)
-                .clickable(onClick = { onLogsClick() })
+                .padding(3.dp)
+                .clickable(onClick = { onCameraClick() })
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(text = boardName, color = Color.Black, fontSize = 20.sp)

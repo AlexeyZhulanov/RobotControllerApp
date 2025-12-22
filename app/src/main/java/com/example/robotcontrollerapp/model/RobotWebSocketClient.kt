@@ -1,6 +1,5 @@
 package com.example.robotcontrollerapp.model
 
-import android.util.Log
 import com.example.robotcontrollerapp.domain.DetectedPin
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.util.gpioToD
@@ -15,9 +14,9 @@ import kotlin.concurrent.thread
 enum class WsState { CONNECTING, CONNECTED, CLOSED, ERROR }
 
 class RobotWebSocketClient(
-    private val uriStr: String,
     private val maxBackoffMs: Long = 30000L
 ) {
+    private var targetUrl: String = ""
     private var client: WebSocketClient? = null
     private val exec = Executors.newSingleThreadExecutor()
 
@@ -49,7 +48,8 @@ class RobotWebSocketClient(
             onStateChanged?.invoke(value)
         }
 
-    fun connect() {
+    fun connect(url: String) {
+        this.targetUrl = url
         shouldReconnect = true
         exec.execute { internalConnectWithBackoff() }
     }
@@ -59,9 +59,9 @@ class RobotWebSocketClient(
         while (shouldReconnect) {
             try {
                 state = WsState.CONNECTING
-                log("Connecting to $uriStr ... (attempt ${attempt + 1})")
+                log("Connecting to $targetUrl ... (attempt ${attempt + 1})")
 
-                client = object : WebSocketClient(URI(uriStr)) {
+                client = object : WebSocketClient(URI(targetUrl)) {
                     override fun onOpen(handshakedata: ServerHandshake?) {
                         log("WebSocket opened")
                         state = WsState.CONNECTED

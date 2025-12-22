@@ -82,6 +82,10 @@ fun PinEditorScreen(
     var showRemoteDeviceDialog by remember { mutableStateOf(false) }
     var onSaveClicked by remember { mutableStateOf(false) }
 
+    val boardNameFix = remember(boardName) {
+        if(boardName.length < 2) "🔧 Unknown" else "🔧 $boardName"
+    }
+
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -149,7 +153,7 @@ fun PinEditorScreen(
         topBar = {
             Column(Modifier.fillMaxWidth()) {
                 TopAppBar(
-                    title = { Text("🔧 $boardName") },
+                    title = { Text(boardNameFix) },
                     navigationIcon = {
                         IconButton(onClick = {
                             if(hasUnsavedChanges) showUnsavedDialog = true else onBack()
