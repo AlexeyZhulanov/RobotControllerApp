@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,6 +24,10 @@ class RobotRepository @Inject constructor() {
     // Состояние подключения
     private val _wsState = MutableStateFlow(WsState.CLOSED)
     val wsState = _wsState.asStateFlow()
+
+    // IP адрес камеры
+    private val _cameraIp = MutableStateFlow<String?>(null)
+    val cameraIp = _cameraIp.asStateFlow()
 
     // Список устройств
     private val _devices = MutableStateFlow<List<Device>>(emptyList())
@@ -92,48 +97,84 @@ class RobotRepository @Inject constructor() {
     // --- ГЛАВНАЯ ЛОГИКА ПОДКЛЮЧЕНИЯ ---
 
     suspend fun searchAndConnect() {
-        if (_wsState.value == WsState.CONNECTED) return
+        _logs.value = "Scanning network for devices..."
+        Log.d("testConnect", "Starting UDP scan...")
 
-        _logs.value = "Searching for robot via UDP..."
-        Log.d("testConnect", "Searching for robot via UDP...")
-        val ip = findRobotIpUdp()
+        // Запускаем сканирование
+        scanNetworkForDevices()
 
-        if (ip != null) {
-            _logs.value = "Robot found: $ip. Connecting..."
-            Log.d("testConnect", "Robot found: $ip. Connecting...")
-            val url = "ws://$ip:81"
-            wsClient.connect(url)
+        if (_wsState.value != WsState.CONNECTED && _wsState.value != WsState.CONNECTING) {
+            _logs.value = "Robot not found."
         } else {
-            Log.d("testConnect", "Robot not found via UDP. Check Wi-Fi.")
-            _logs.value = "Robot not found via UDP. Check Wi-Fi."
+            _logs.value = "Scan finished."
+        }
+
+        if (_cameraIp.value != null) {
+            Log.d("testConnect", "Camera is ready at ${_cameraIp.value}")
         }
     }
 
     // --- UDP ПОИСК ---
-    private suspend fun findRobotIpUdp(): String? = withContext(Dispatchers.IO) {
+    private suspend fun scanNetworkForDevices() = withContext(Dispatchers.IO) {
         val socket = DatagramSocket(4210)
-        socket.soTimeout = 5000
+        socket.soTimeout = 2000 // Таймаут ожидания одного пакета (2 сек)
 
-        return@withContext try {
-            val buf = ByteArray(256)
-            val packet = DatagramPacket(buf, buf.size)
+        // Будем слушать эфир 6 секунд суммарно
+        val endTime = System.currentTimeMillis() + 6000
 
-            socket.receive(packet)
+        try {
+            while (System.currentTimeMillis() < endTime) {
+                val buf = ByteArray(256)
+                val packet = DatagramPacket(buf, buf.size)
 
-            val msg = String(packet.data, 0, packet.length)
-            Log.d("UDP", "Received: $msg")
+                try {
+                    // Блокируется тут, пока не придет пакет или не выйдет таймаут (2 сек)
+                    socket.receive(packet)
 
-            if (msg.startsWith("I_AM_ROBOT:")) {
-                msg.removePrefix("I_AM_ROBOT:")
-            } else null
+                    val msg = String(packet.data, 0, packet.length).trim()
+                    Log.d("testUDP", "Received: $msg")
+
+                    // 1. Нашли РОБОТА
+                    if (msg.startsWith("I_AM_ROBOT:")) {
+                        val ip = msg.removePrefix("I_AM_ROBOT:")
+                        Log.d("testUDP", "Robot found IP: $ip")
+
+                        // Если еще не подключены - подключаемся
+                        if (_wsState.value == WsState.CLOSED || _wsState.value == WsState.ERROR) {
+                            val url = "ws://$ip:81"
+                            wsClient.connect(url)
+                            _logs.value = "Connecting to Robot ($ip)..."
+                        }
+                    }
+
+                    // 2. Нашли КАМЕРУ
+                    if (msg.startsWith("I_AM_CAMERA:")) {
+                        val ip = msg.removePrefix("I_AM_CAMERA:")
+                        if (_cameraIp.value != ip) {
+                            _cameraIp.value = ip
+                            Log.d("testUDP", "Camera found IP: $ip")
+                            _logs.value = "Camera found ($ip)"
+                        }
+                    }
+
+                    // Оптимизация: Если нашли обоих, можно выйти из цикла раньше
+                    if ((_wsState.value == WsState.CONNECTED || _wsState.value == WsState.CONNECTING) && _cameraIp.value != null) {
+                        Log.d("testUDP", "Both devices found. Stopping scan.")
+                        break
+                    }
+
+                } catch (_: SocketTimeoutException) {
+                    // Таймаут приема одного пакета - это нормально, просто крутим цикл дальше
+                    continue
+                }
+            }
         } catch (e: Exception) {
-            Log.e("UDP", "Discovery failed", e)
-            null
+            Log.e("UDP", "Discovery error", e)
+            _logs.value = "Discovery error: ${e.message}"
         } finally {
             socket.close()
         }
     }
-
 
     // --- ПРОКСИ-МЕТОДЫ (Пробрасываем команды в клиент) ---
     fun requestDevices() = wsClient.requestDevices()

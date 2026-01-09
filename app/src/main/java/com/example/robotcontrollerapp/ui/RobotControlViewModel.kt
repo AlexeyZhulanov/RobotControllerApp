@@ -21,6 +21,7 @@ class RobotControlViewModel @Inject constructor(
     val wsState = repository.wsState
     val logs = repository.logs // todo можно использовать потом
     val boardInfo = repository.boardInfo
+    val cameraIp = repository.cameraIp
 
     // --- ЛОГИКА ФИЛЬТРАЦИИ СЕНСОРОВ ---
     private val subscribedSensorNames = devices.map { deviceList ->

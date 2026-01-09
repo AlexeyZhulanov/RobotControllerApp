@@ -69,6 +69,7 @@ fun ControllerScreen(
     val boardInfo by viewModel.boardInfo.collectAsState()
     val devices by viewModel.devices.collectAsState()
     val sensorData by viewModel.sensorData.collectAsState()
+    val cameraIp by viewModel.cameraIp.collectAsState()
     var showCamera by remember { mutableStateOf(false) }
 
     LaunchedEffect(devices) {
@@ -113,7 +114,14 @@ fun ControllerScreen(
                     onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
                 )
                 if(showCamera) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.DarkGray))
+                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)) {
+                        if(cameraIp != null) {
+                            MjpegSurface(
+                                url = "http://${cameraIp}:81", // Порт 81 как в прошивке
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                 }
             }
             val motors = remember(devices) {
