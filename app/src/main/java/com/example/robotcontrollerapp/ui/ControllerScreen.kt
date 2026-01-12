@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +47,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.robotcontrollerapp.R
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.model.WsState
+import com.example.robotcontrollerapp.util.fixedTextStyle
 import kotlinx.coroutines.delay
 import kotlin.collections.chunked
 import kotlin.collections.forEach
@@ -102,11 +105,9 @@ fun ControllerScreen(
     val boardInfo = "ESP32" to "123123123"
     val devices = listOf(Device("button1", 1, type = "button"),
         Device("button2", 2, type = "button"), Device("button3", 3, type = "button"),
-        Device("button4", 4, type = "button"), Device("button5", 5, type = "button"),
         Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"),
         Device("t3", 7, type = "motor"))
-    val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f, "sensor_A2" to 0.0f,
-        "sensor_A3" to 9.99f)
+    val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f)
     // ==================================== TODO
     LaunchedEffect(devices) {
         viewModel.subscribeAllSensors(devices)
@@ -126,8 +127,7 @@ fun ControllerScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFFC6C5C9))) {
-        BoxWithConstraints(modifier = layoutConfig.parentBoxModifier) {
-            val width = maxWidth
+        Box(modifier = layoutConfig.parentBoxModifier) {
             TopBar(
                 modifier = layoutConfig.topBarModifier.align(layoutConfig.topBarAlignment),
                 boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
@@ -139,26 +139,35 @@ fun ControllerScreen(
             // Для альбомной мы либо делаем "таблицу" и в центральной ячейке камера, либо зададим
             // в процентах ширину и высоту также вычислим
             // Под горизонталку нужен свой компонент сенсор и кнопка (более простые прямоугольные)
-            Column(layoutConfig.parentColumnModifier) {
+            Column(layoutConfig.parentColumnModifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Column(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     val weight1 = remember(sensorData.size) {
-                        (sensorData.size / 3 + 1).toFloat()
+                        when {
+                            sensorData.size in 0..2 -> 1f
+                            sensorData.size % 3 == 0 -> sensorData.size / 3f
+                            else -> (sensorData.size / 3 + 1).toFloat()
+                        }
                     }
                     val dev = devices.filter { it.type != "sensor" && it.type != "motor" }
                     val weight2 = remember(dev.size) {
-                        (dev.size / 3 + 1).toFloat()
+                        when {
+                            dev.size in 0..2 -> 1f
+                            dev.size % 3 == 0 -> dev.size / 3f
+                            else -> (dev.size / 3 + 1).toFloat()
+                        }
                     }
                     Sensors(
                         modifier = Modifier.weight(weight1),
-                        width = width,
+                        rowCount = weight1.toInt(),
                         data = sensorData
                     )
                     CustomButtons(
                         modifier = Modifier.weight(weight2),
-                        width = width,
+                        rowCount = weight2.toInt(),
                         devices = dev,
                         onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
                     )
@@ -184,6 +193,11 @@ fun ControllerScreen(
                     }
                     when(motors.size) {
                         in 0..2 -> {
+                            // todo можно это попробовать
+                            //BoxWithConstraints {
+                            //    val size = min(maxWidth, maxHeight) * 0.8f
+                            //    Joystick(size = size)
+                            //}
                             Joystick(
                                 modifier = layoutConfig.joystickModifier.align(layoutConfig.joystickAlignment),
                                 size = layoutConfig.joystickSize,
@@ -272,79 +286,38 @@ fun TopBar(
 }
 
 @Composable
-fun Sensors(modifier: Modifier, width: Dp, data: Map<String, Float>) {
-    Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        val count = data.size
-        val sCount = maxOf(2, count)
-        val widthForEach = maxOf(width / (sCount + 1), width / 6)
-        val chunkedMaps = data.toList()
-            .chunked(3)
-            .map { it.toMap() }
+fun Sensors(modifier: Modifier, rowCount: Int, data: Map<String, Float>) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        val verticalSpacing = 10.dp
+        val horizontalSpacing = 16.dp
 
-        chunkedMaps.forEach { rowMaps ->
-            Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                rowMaps.forEach { (key, value) ->
-                    key(key) {
-                        Sensor(
-                            size = widthForEach,
-                            name = key,
-                            value = value
-                        )
-                    }
-                }
-            }
+        val availableHeight = maxHeight - verticalSpacing * (rowCount - 1)
+
+        var cellHeight = availableHeight / rowCount
+        var cellWidth = (maxWidth - horizontalSpacing * 2) / 3
+
+        if(cellHeight > cellWidth) cellHeight = cellWidth
+        val isQuad = !isDifferenceMoreThan40Percent(cellWidth.value, cellHeight.value)
+        if(isQuad) {
+            if(cellWidth > cellHeight) cellWidth = cellHeight
         }
-    }
-//    FlowRow(
-//        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
-//        horizontalArrangement = Arrangement.SpaceAround,
-//        verticalArrangement = Arrangement.spacedBy(10.dp),
-//        maxItemsInEachRow = 5
-//    ) {
-//        val count = data.size
-//        val sCount = maxOf(2, count)
-//        val widthForEach = maxOf(width / (sCount + 1), width / 6)
-//        data.forEach { (key, value) ->
-//            key(key) {
-//                Sensor(
-//                    size = widthForEach,
-//                    name = key,
-//                    value = value
-//                )
-//            }
-//        }
-//    }
-}
-
-@Composable
-fun CustomButtons(modifier: Modifier, width: Dp, devices: List<Device>, onDeviceToggle: (Device, Boolean) -> Unit) {
-    Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(15.dp)
-    ) {
-        val chunked = devices.chunked(3)
-        val count = devices.size
-        val sCount = maxOf(2, count)
-        val widthForEach = maxOf(width / (sCount + 1), width / 4)
-
-        chunked.forEach { rowDevices ->
-            Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                rowDevices.forEach { device ->
-                    key(device) {
-                        CustomButton(
-                            size = widthForEach,
-                            device = device,
-                            onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
-                        )
+        Column(verticalArrangement = Arrangement.spacedBy(verticalSpacing)) {
+            val chunkedMaps = data.toList().chunked(3).map { it.toMap() }
+            chunkedMaps.forEach { rowMaps ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    horizontalArrangement = Arrangement.SpaceAround
+                ) {
+                    rowMaps.forEach { (key, value) ->
+                        key(key) {
+                            Sensor(
+                                width = cellWidth,
+                                height = cellHeight,
+                                isQuad = isQuad,
+                                name = key,
+                                value = value
+                            )
+                        }
                     }
                 }
             }
@@ -353,27 +326,79 @@ fun CustomButtons(modifier: Modifier, width: Dp, devices: List<Device>, onDevice
 }
 
 @Composable
-fun Sensor(size: Dp, name: String, value: Float) {
+fun CustomButtons(modifier: Modifier, rowCount: Int, devices: List<Device>, onDeviceToggle: (Device, Boolean) -> Unit) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        val verticalSpacing = 10.dp
+        val horizontalSpacing = 16.dp
+
+        val availableHeight = maxHeight - verticalSpacing * (rowCount - 1)
+
+        var cellHeight = availableHeight / rowCount
+        var cellWidth = (maxWidth - horizontalSpacing * 2) / 3
+
+        if(cellHeight > cellWidth) cellHeight = cellWidth
+        val isQuad = !isDifferenceMoreThan40Percent(cellWidth.value, cellHeight.value)
+        if(isQuad) {
+            if(cellWidth > cellHeight) cellWidth = cellHeight
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(verticalSpacing)) {
+            val chunked = devices.chunked(3)
+            chunked.forEach { rowDevices ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    horizontalArrangement = Arrangement.SpaceAround
+                ) {
+                    rowDevices.forEach { device ->
+                        key(device) {
+                            CustomButton(
+                                width = cellWidth,
+                                height = cellHeight,
+                                isQuad = isQuad,
+                                device = device,
+                                onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun Sensor(width: Dp, height: Dp, isQuad: Boolean, name: String, value: Float) {
+    val avgSizeForWidth = (width + height) / 2
+    val avgSize = (width + height + height) / 3
+    val rcsSize = avgSize / 6
+    val startPadding = rcsSize / 2
+    val fs1 = (avgSize / 5.7f).value
+    val fs2 = (avgSize / 3.5f).value
+    val fraction = if(isQuad) 0.8f else 1f
     val finalName = if(name.length > 9) name.replace("_sensor", "") else name
-    Box(modifier = Modifier.size(size).background(Color.White, RoundedCornerShape(16.dp)), contentAlignment = Alignment.CenterStart) {
-        Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxHeight(fraction = 0.8f).padding(start = 8.dp)) {
-            val fs1 = (size / 5.7f).value
-            val fs2 = (size / 3.5f).value
-            Text(text = finalName, color = Color.Gray, fontSize = fs1.sp)
-            Text(text = value.toString(), color = Color.Black, fontSize = fs2.sp)
+    Box(modifier = Modifier.width(avgSizeForWidth).height(height).background(Color.White, RoundedCornerShape(rcsSize)), contentAlignment = Alignment.CenterStart) {
+        Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxHeight(fraction = fraction).padding(start = startPadding)) {
+            Text(text = finalName, color = Color.Gray, fontSize = fs1.sp, style = fixedTextStyle)
+            Text(text = value.toString(), color = Color.Black, fontSize = fs2.sp, style = fixedTextStyle)
         }
     }
 }
 
 @Composable
-fun CustomButton(size: Dp, device: Device, onDeviceToggle: (Device, Boolean) -> Unit) {
+fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device, onDeviceToggle: (Device, Boolean) -> Unit) {
     var isOn by remember { mutableStateOf(device.state) }
+    val avgSizeForWidth = (width + height) / 2
+    val avgSize = (width + height + height) / 3
+    val rcsSize = avgSize / 6
+    val fraction = if(isQuad) 0.9f else 1f
+    val fs = (avgSize / 7f).value
+    val imageWeight = if(isQuad) 3f else 2.5f
     Box(
         modifier = Modifier
-            .size(size)
+            .width(avgSizeForWidth)
+            .height(height)
             .fillMaxSize()
             .background(if (isOn) Color(0xFF81C784) else Color(0xFFF0F0F0),
-                RoundedCornerShape(16.dp))
+                RoundedCornerShape(rcsSize))
             .clickable(onClick = {
                 isOn = !isOn
                 onDeviceToggle(device, isOn)
@@ -383,11 +408,10 @@ fun CustomButton(size: Dp, device: Device, onDeviceToggle: (Device, Boolean) -> 
         Column(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxHeight(fraction = 0.9f).fillMaxWidth()
+            modifier = Modifier.fillMaxHeight(fraction = fraction).fillMaxWidth()
         ) {
-            val fs = (size / 7).value
-            Image(painter = painterResource(R.drawable.ic_bulb), contentDescription = "IconButton", modifier = Modifier.weight(3f).fillMaxWidth())
-            Text(text = device.name, color = Color.Black, fontSize = fs.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+            Image(painter = painterResource(R.drawable.ic_bulb), contentDescription = "IconButton", modifier = Modifier.weight(imageWeight).fillMaxWidth())
+            Text(text = device.name, color = Color.Black, fontSize = fs.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, style = fixedTextStyle)
         }
     }
 }
@@ -413,6 +437,19 @@ fun AnimatedConnectingText(
         modifier = modifier,
         fontSize = fontSize
     )
+}
+
+fun isDifferenceMoreThan40Percent(a: Float, b: Float): Boolean {
+    if (a == b) return false
+    if (a == 0f || b == 0f) return true
+
+    val max = maxOf(a, b)
+    val min = minOf(a, b)
+
+    // Разница в процентах относительно большего числа
+    val percentage = ((max - min) / max) * 100
+
+    return percentage > 40
 }
 
 @Composable

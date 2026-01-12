@@ -89,14 +89,14 @@ fun MotorControl(
                 onClick = { controlMode = ControlMode.Individual },
                 selected = controlMode == ControlMode.Individual
             ) {
-                Text("Индивидуально")
+                Text("По отдельности")
             }
             SegmentedButton(
                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                 onClick = { controlMode = ControlMode.Collective },
                 selected = controlMode == ControlMode.Collective
             ) {
-                Text("Коллективно")
+                Text("Объединенно")
             }
         }
 
