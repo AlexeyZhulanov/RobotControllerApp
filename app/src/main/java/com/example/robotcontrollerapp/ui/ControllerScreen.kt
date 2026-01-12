@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -51,12 +50,38 @@ import kotlin.collections.chunked
 import kotlin.collections.forEach
 
 sealed interface ControllerScreenLayoutParams {
-    // todo params (modifier, alignment, dp...)
+    val parentBoxModifier: Modifier
+    val topBarModifier: Modifier
+    val topBarAlignment: Alignment
+    val parentColumnModifier: Modifier
+    val joystickModifier: Modifier
+    val joystickAlignment: Alignment
+    val joystickSize: Dp
+    val motorControlModifier: Modifier
+    val motorControlAlignment: Alignment
+
     object Portrait : ControllerScreenLayoutParams {
-        // todo override params
+        override val parentBoxModifier: Modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+        override val topBarModifier: Modifier = Modifier.padding(top = 8.dp)
+        override val topBarAlignment: Alignment = Alignment.TopCenter
+        override val parentColumnModifier: Modifier = Modifier.padding(top = 80.dp)
+        override val joystickModifier: Modifier = Modifier.padding(bottom = 20.dp)
+        override val joystickAlignment: Alignment = Alignment.BottomCenter
+        override val joystickSize: Dp = 200.dp
+        override val motorControlModifier: Modifier = Modifier
+        override val motorControlAlignment: Alignment = Alignment.BottomCenter
     }
     object Landscape : ControllerScreenLayoutParams {
-        // todo override params
+        // todo custom params
+        override val parentBoxModifier: Modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+        override val topBarModifier: Modifier = Modifier.padding(top = 8.dp)
+        override val topBarAlignment: Alignment = Alignment.TopCenter
+        override val parentColumnModifier: Modifier = Modifier.padding(top = 80.dp)
+        override val joystickModifier: Modifier = Modifier
+        override val joystickAlignment: Alignment = Alignment.BottomCenter
+        override val joystickSize: Dp = 200.dp
+        override val motorControlModifier: Modifier = Modifier
+        override val motorControlAlignment: Alignment = Alignment.BottomCenter
     }
 }
 
@@ -64,14 +89,25 @@ sealed interface ControllerScreenLayoutParams {
 fun ControllerScreen(
     viewModel: RobotControlViewModel = hiltViewModel(),
     onOpenPinEditor: () -> Unit
-) {
-    val wsState by viewModel.wsState.collectAsState()
-    val boardInfo by viewModel.boardInfo.collectAsState()
-    val devices by viewModel.devices.collectAsState()
-    val sensorData by viewModel.sensorData.collectAsState()
+) { // todo вернуть обратно
+    //val wsState by viewModel.wsState.collectAsState()
+    //val boardInfo by viewModel.boardInfo.collectAsState()
+    //val devices by viewModel.devices.collectAsState()
+    //val sensorData by viewModel.sensorData.collectAsState()
     val cameraIp by viewModel.cameraIp.collectAsState()
     var showCamera by remember { mutableStateOf(false) }
 
+    // FAKE DATA (на время тестирования UI) TODO
+    val wsState = WsState.CONNECTED
+    val boardInfo = "ESP32" to "123123123"
+    val devices = listOf(Device("button1", 1, type = "button"),
+        Device("button2", 2, type = "button"), Device("button3", 3, type = "button"),
+        Device("button4", 4, type = "button"), Device("button5", 5, type = "button"),
+        Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"),
+        Device("t3", 7, type = "motor"))
+    val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f, "sensor_A2" to 0.0f,
+        "sensor_A3" to 9.99f)
+    // ==================================== TODO
     LaunchedEffect(devices) {
         viewModel.subscribeAllSensors(devices)
     }
@@ -90,31 +126,46 @@ fun ControllerScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFFC6C5C9))) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        BoxWithConstraints(modifier = layoutConfig.parentBoxModifier) {
             val width = maxWidth
             TopBar(
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                modifier = layoutConfig.topBarModifier.align(layoutConfig.topBarAlignment),
                 boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
                 wsState = wsState,
                 onSettingsClick = onOpenPinEditor,
                 onCameraClick = { showCamera = !showCamera }
             )
-
-            Column(Modifier.padding(top = 80.dp, bottom = 270.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Sensors(
-                    modifier = Modifier.weight(1f),
-                    width = width,
-                    data = sensorData
-                )
-                CustomButtons(
-                    modifier = Modifier.weight(1f),
-                    width = width,
-                    devices = devices.filter { it.type != "sensor" && it.type != "motor" },
-                    onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
-                )
+            // todo под горизонтальную ориентацию нужен вообще другой компонент
+            // Для альбомной мы либо делаем "таблицу" и в центральной ячейке камера, либо зададим
+            // в процентах ширину и высоту также вычислим
+            // Под горизонталку нужен свой компонент сенсор и кнопка (более простые прямоугольные)
+            Column(layoutConfig.parentColumnModifier) {
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    val weight1 = remember(sensorData.size) {
+                        (sensorData.size / 3 + 1).toFloat()
+                    }
+                    val dev = devices.filter { it.type != "sensor" && it.type != "motor" }
+                    val weight2 = remember(dev.size) {
+                        (dev.size / 3 + 1).toFloat()
+                    }
+                    Sensors(
+                        modifier = Modifier.weight(weight1),
+                        width = width,
+                        data = sensorData
+                    )
+                    CustomButtons(
+                        modifier = Modifier.weight(weight2),
+                        width = width,
+                        devices = dev,
+                        onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
+                    )
+                }
                 if(showCamera) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)) {
+                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black),
+                        contentAlignment = Alignment.Center) {
                         if(cameraIp != null) {
                             MjpegSurface(
                                 url = "http://${cameraIp}:81", // Порт 81 как в прошивке
@@ -123,53 +174,59 @@ fun ControllerScreen(
                         }
                     }
                 }
-            }
-            val motors = remember(devices) {
-                devices.filter { it.type == "motor" }
-            }
-            when(motors.size) {
-                in 0..2 -> {
-                    Joystick(
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
-                        size = 200.dp,
-                        enabled = motors.isNotEmpty(),
-                        onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
-                            when(motors.size) {
-                                0 -> {
-                                    // нет моторов — ничего не делаем
-                                }
-                                1 -> {
-                                    // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
-                                    val motor = motors[0]
-                                    // вызываем viewModel, передаём signed speed
-                                    viewModel.setMotorSpeed(motor, leftPwmSigned)
-                                }
-                                else -> {
-                                    // два мотора - используем первые два как лев/право
-                                    val leftMotor = motors[0]
-                                    val rightMotor = motors[1]
-                                    viewModel.setMotorSpeed(leftMotor, leftPwmSigned)
-                                    viewModel.setMotorSpeed(rightMotor, rightPwmSigned)
-                                }
-                            }
-                        }
-                    )
+                val w = remember(showCamera) {
+                    if(showCamera) 1f else 0.7f
                 }
-                else -> {
-                    // три или четыре мотора
-                    MotorControl(
-                        modifier = Modifier.height(270.dp).align(Alignment.BottomCenter),
-                        motors = motors,
-                        onCommand = { motorName, motorSpeed ->
-                            val motor = motors.find { it.name == motorName }
-                            if (motor != null) {
-                                viewModel.setMotorSpeed(motor, motorSpeed)
-                            } else {
-                                // Сюда код не должен попасть, но это хорошая проверка
-                                Log.e("MotorControl", "Ошибка: мотор с именем $motorName не найден!")
-                            }
+                Box(modifier = Modifier.weight(w).fillMaxWidth(),
+                    contentAlignment = Alignment.Center) {
+                    val motors = remember(devices) {
+                        devices.filter { it.type == "motor" }
+                    }
+                    when(motors.size) {
+                        in 0..2 -> {
+                            Joystick(
+                                modifier = layoutConfig.joystickModifier.align(layoutConfig.joystickAlignment),
+                                size = layoutConfig.joystickSize,
+                                enabled = motors.isNotEmpty(),
+                                onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
+                                    when(motors.size) {
+                                        0 -> {
+                                            // нет моторов — ничего не делаем
+                                        }
+                                        1 -> {
+                                            // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
+                                            val motor = motors[0]
+                                            // вызываем viewModel, передаём signed speed
+                                            viewModel.setMotorSpeed(motor, leftPwmSigned)
+                                        }
+                                        else -> {
+                                            // два мотора - используем первые два как лев/право
+                                            val leftMotor = motors[0]
+                                            val rightMotor = motors[1]
+                                            viewModel.setMotorSpeed(leftMotor, leftPwmSigned)
+                                            viewModel.setMotorSpeed(rightMotor, rightPwmSigned)
+                                        }
+                                    }
+                                }
+                            )
                         }
-                    )
+                        else -> {
+                            // три или четыре мотора
+                            MotorControl(
+                                modifier = layoutConfig.motorControlModifier.align(layoutConfig.motorControlAlignment),
+                                motors = motors,
+                                onCommand = { motorName, motorSpeed ->
+                                    val motor = motors.find { it.name == motorName }
+                                    if (motor != null) {
+                                        viewModel.setMotorSpeed(motor, motorSpeed)
+                                    } else {
+                                        // Сюда код не должен попасть, но это хорошая проверка
+                                        Log.e("MotorControl", "Ошибка: мотор с именем $motorName не найден!")
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -224,7 +281,7 @@ fun Sensors(modifier: Modifier, width: Dp, data: Map<String, Float>) {
         val sCount = maxOf(2, count)
         val widthForEach = maxOf(width / (sCount + 1), width / 6)
         val chunkedMaps = data.toList()
-            .chunked(2)
+            .chunked(3)
             .map { it.toMap() }
 
         chunkedMaps.forEach { rowMaps ->
