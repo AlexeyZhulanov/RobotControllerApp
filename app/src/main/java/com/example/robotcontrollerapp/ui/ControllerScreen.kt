@@ -2,9 +2,12 @@ package com.example.robotcontrollerapp.ui
 
 import android.content.res.Configuration
 import android.util.Log
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,6 +25,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
@@ -42,6 +47,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.robotcontrollerapp.R
@@ -59,7 +65,6 @@ sealed interface ControllerScreenLayoutParams {
     val parentColumnModifier: Modifier
     val joystickModifier: Modifier
     val joystickAlignment: Alignment
-    val joystickSize: Dp
     val motorControlModifier: Modifier
     val motorControlAlignment: Alignment
 
@@ -68,9 +73,8 @@ sealed interface ControllerScreenLayoutParams {
         override val topBarModifier: Modifier = Modifier.padding(top = 8.dp)
         override val topBarAlignment: Alignment = Alignment.TopCenter
         override val parentColumnModifier: Modifier = Modifier.padding(top = 80.dp)
-        override val joystickModifier: Modifier = Modifier.padding(bottom = 20.dp)
+        override val joystickModifier: Modifier = Modifier
         override val joystickAlignment: Alignment = Alignment.BottomCenter
-        override val joystickSize: Dp = 200.dp
         override val motorControlModifier: Modifier = Modifier
         override val motorControlAlignment: Alignment = Alignment.BottomCenter
     }
@@ -82,7 +86,6 @@ sealed interface ControllerScreenLayoutParams {
         override val parentColumnModifier: Modifier = Modifier.padding(top = 80.dp)
         override val joystickModifier: Modifier = Modifier
         override val joystickAlignment: Alignment = Alignment.BottomCenter
-        override val joystickSize: Dp = 200.dp
         override val motorControlModifier: Modifier = Modifier
         override val motorControlAlignment: Alignment = Alignment.BottomCenter
     }
@@ -105,9 +108,9 @@ fun ControllerScreen(
     val boardInfo = "ESP32" to "123123123"
     val devices = listOf(Device("button1", 1, type = "button"),
         Device("button2", 2, type = "button"), Device("button3", 3, type = "button"),
-        Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"),
-        Device("t3", 7, type = "motor"))
+        Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"))
     val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f)
+    val dev = devices.filter { it.type != "sensor" && it.type != "motor" }
     // ==================================== TODO
     LaunchedEffect(devices) {
         viewModel.subscribeAllSensors(devices)
@@ -152,7 +155,6 @@ fun ControllerScreen(
                             else -> (sensorData.size / 3 + 1).toFloat()
                         }
                     }
-                    val dev = devices.filter { it.type != "sensor" && it.type != "motor" }
                     val weight2 = remember(dev.size) {
                         when {
                             dev.size in 0..2 -> 1f
@@ -160,17 +162,21 @@ fun ControllerScreen(
                             else -> (dev.size / 3 + 1).toFloat()
                         }
                     }
-                    Sensors(
-                        modifier = Modifier.weight(weight1),
-                        rowCount = weight1.toInt(),
-                        data = sensorData
-                    )
-                    CustomButtons(
-                        modifier = Modifier.weight(weight2),
-                        rowCount = weight2.toInt(),
-                        devices = dev,
-                        onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
-                    )
+                    if(sensorData.isNotEmpty()) {
+                        Sensors(
+                            modifier = Modifier.weight(weight1),
+                            rowCount = weight1.toInt(),
+                            data = sensorData
+                        )
+                    }
+                    if(dev.isNotEmpty()) {
+                        CustomButtons(
+                            modifier = Modifier.weight(weight2),
+                            rowCount = weight2.toInt(),
+                            devices = dev,
+                            onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
+                        )
+                    }
                 }
                 if(showCamera) {
                     Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black),
@@ -183,8 +189,15 @@ fun ControllerScreen(
                         }
                     }
                 }
-                val w = remember(showCamera) {
-                    if(showCamera) 1f else 0.7f
+                val w = remember(showCamera, sensorData.size, dev.size) {
+                    if(showCamera) {
+                        when {
+                            sensorData.isEmpty() -> 1.5f
+                            dev.isEmpty() -> 1.5f
+                            sensorData.size <= 3 && dev.size <= 3 -> 1.2f
+                            else -> 1f
+                        }
+                    } else 0.7f
                 }
                 Box(modifier = Modifier.weight(w).fillMaxWidth(),
                     contentAlignment = Alignment.Center) {
@@ -193,36 +206,34 @@ fun ControllerScreen(
                     }
                     when(motors.size) {
                         in 0..2 -> {
-                            // todo можно это попробовать
-                            //BoxWithConstraints {
-                            //    val size = min(maxWidth, maxHeight) * 0.8f
-                            //    Joystick(size = size)
-                            //}
-                            Joystick(
-                                modifier = layoutConfig.joystickModifier.align(layoutConfig.joystickAlignment),
-                                size = layoutConfig.joystickSize,
-                                enabled = motors.isNotEmpty(),
-                                onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
-                                    when(motors.size) {
-                                        0 -> {
-                                            // нет моторов — ничего не делаем
-                                        }
-                                        1 -> {
-                                            // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
-                                            val motor = motors[0]
-                                            // вызываем viewModel, передаём signed speed
-                                            viewModel.setMotorSpeed(motor, leftPwmSigned)
-                                        }
-                                        else -> {
-                                            // два мотора - используем первые два как лев/право
-                                            val leftMotor = motors[0]
-                                            val rightMotor = motors[1]
-                                            viewModel.setMotorSpeed(leftMotor, leftPwmSigned)
-                                            viewModel.setMotorSpeed(rightMotor, rightPwmSigned)
+                            BoxWithConstraints {
+                                val size = min(maxWidth, maxHeight) * 0.7f
+                                Joystick(
+                                    modifier = layoutConfig.joystickModifier.align(layoutConfig.joystickAlignment),
+                                    size = size,
+                                    enabled = motors.isNotEmpty(),
+                                    onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
+                                        when(motors.size) {
+                                            0 -> {
+                                                // нет моторов — ничего не делаем
+                                            }
+                                            1 -> {
+                                                // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
+                                                val motor = motors[0]
+                                                // вызываем viewModel, передаём signed speed
+                                                viewModel.setMotorSpeed(motor, leftPwmSigned)
+                                            }
+                                            else -> {
+                                                // два мотора - используем первые два как лев/право
+                                                val leftMotor = motors[0]
+                                                val rightMotor = motors[1]
+                                                viewModel.setMotorSpeed(leftMotor, leftPwmSigned)
+                                                viewModel.setMotorSpeed(rightMotor, rightPwmSigned)
+                                            }
                                         }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                         else -> {
                             // три или четыре мотора
@@ -235,7 +246,7 @@ fun ControllerScreen(
                                         viewModel.setMotorSpeed(motor, motorSpeed)
                                     } else {
                                         // Сюда код не должен попасть, но это хорошая проверка
-                                        Log.e("MotorControl", "Ошибка: мотор с именем $motorName не найден!")
+                                        Log.e("testMotorControl", "Ошибка: мотор с именем $motorName не найден!")
                                     }
                                 }
                             )
@@ -386,23 +397,42 @@ fun Sensor(width: Dp, height: Dp, isQuad: Boolean, name: String, value: Float) {
 @Composable
 fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device, onDeviceToggle: (Device, Boolean) -> Unit) {
     var isOn by remember { mutableStateOf(device.state) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
     val avgSizeForWidth = (width + height) / 2
     val avgSize = (width + height + height) / 3
     val rcsSize = avgSize / 6
     val fraction = if(isQuad) 0.9f else 1f
     val fs = (avgSize / 7f).value
     val imageWeight = if(isQuad) 3f else 2.5f
+
+    val bColor = when {
+        isPressed -> Color(0xFFB5E0C2)
+        isOn -> Color(0xFF81C784)
+        else -> Color(0xFFF0F0F0)
+    }
+    val backgroundColor by animateColorAsState(
+        targetValue = bColor,
+        label = "buttonColor"
+    )
     Box(
         modifier = Modifier
             .width(avgSizeForWidth)
             .height(height)
-            .fillMaxSize()
-            .background(if (isOn) Color(0xFF81C784) else Color(0xFFF0F0F0),
-                RoundedCornerShape(rcsSize))
-            .clickable(onClick = {
-                isOn = !isOn
-                onDeviceToggle(device, isOn)
-            }),
+            .clip(RoundedCornerShape(rcsSize))
+            .background(backgroundColor)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(
+                    bounded = true,
+                    color = Color.Black.copy(alpha = 0.2f)
+                ),
+                onClick = {
+                    isOn = !isOn
+                    onDeviceToggle(device, isOn)
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         Column(

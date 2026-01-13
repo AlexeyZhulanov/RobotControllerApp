@@ -1,5 +1,6 @@
 package com.example.robotcontrollerapp.ui
 
+import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
@@ -8,6 +9,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -212,7 +214,7 @@ private fun IndividualMotorControls(
                         inactiveTickColor = Color.Transparent // Скрываем "грязь" от 510 шагов
                     ),
                     modifier = Modifier.align(Alignment.Center).padding(start = 30.dp, end = 24.dp) // полная инверсия - start = bottom, end = top
-                ) // todo подумать над .graphicsLayer { scaleY = 1.5f условно }
+                )
                 // 4. Текстовое значение
                 Text(
                     text = (sliderValues[motor.name] ?: 0f).toInt().toString(),
@@ -234,50 +236,72 @@ private fun CollectiveMotorControls(
     onSpeedChange: (Float) -> Unit,
     onSpeedChangeFinished: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(top = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Кнопки FWD / BWD
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val h = maxHeight
+        val topPadding = (h * 0.05f).coerceIn(2.dp, 32.dp)
+        val spacerHeight = (h * 0.1f).coerceIn(8.dp, 32.dp)
+        Log.d("testVals", "topPad: $topPadding, spacerH: $spacerHeight")
+
+        Column(
+            modifier = Modifier.fillMaxSize().padding(top = topPadding),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Кнопка FWD (вперед)
-            Button(
-                onClick = { onDirectionChange(1) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (collectiveDirection == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
-                )
+            // Кнопки FWD / BWD
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
             ) {
-                Text("FWD")
+                // Кнопка FWD (вперед)
+                Button(
+                    onClick = { onDirectionChange(1) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (collectiveDirection == 1) Color(0xFF32A0EB) else Color(0xFFB7B6BA)
+                    )
+                ) {
+                    Text("FWD")
+                }
+                // Кнопка BWD (назад)
+                Button(
+                    onClick = { onDirectionChange(-1) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (collectiveDirection == -1) Color(0xFFD86B6B) else Color(0xFFB7B6BA)
+                    )
+                ) {
+                    Text("BWD")
+                }
             }
-            // Кнопка BWD (назад)
-            Button(
-                onClick = { onDirectionChange(-1) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (collectiveDirection == -1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
+
+            Spacer(Modifier.height(spacerHeight))
+
+            val fraction = (collectiveSpeed / 255f).coerceIn(0f, 1f)
+            val dullColor = Color.DarkGray.copy(alpha = 0.7f) // Тусклый серый в начале
+            val targetColor = if(collectiveDirection == 1) Color.Blue else Color.Red
+            // "Смешиваем" тусклый цвет с нашим целевым цветом
+            val dynamicColor = lerp(dullColor, targetColor, fraction)
+
+            // Общий слайдер скорости
+            Text(
+                text = "Общая скорость: ${collectiveSpeed.toInt()}",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+                fontSize = 16.sp
+            )
+            Slider(
+                value = collectiveSpeed,
+                onValueChange = onSpeedChange,
+                onValueChangeFinished = onSpeedChangeFinished,
+                valueRange = 0f..255f,
+                steps = 254,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = dynamicColor, // Бегунок
+                    activeTrackColor = dynamicColor, // "Активная" часть дорожки
+                    inactiveTrackColor = dynamicColor, // "Неактивная" часть
+                    activeTickColor = Color.Transparent, // Скрываем "грязь" от 255 шагов
+                    inactiveTickColor = Color.Transparent // Скрываем "грязь" от 255 шагов
                 )
-            ) {
-                Text("BWD")
-            }
+            )
         }
-
-        Spacer(Modifier.height(32.dp))
-
-        // Общий слайдер скорости
-        Text(
-            text = "Общая скорость: ${collectiveSpeed.toInt()}",
-            style = MaterialTheme.typography.labelLarge
-        )
-        Slider(
-            value = collectiveSpeed,
-            onValueChange = onSpeedChange,
-            onValueChangeFinished = onSpeedChangeFinished,
-            valueRange = 0f..255f,
-            steps = 254,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp)
-        )
     }
 }
 
