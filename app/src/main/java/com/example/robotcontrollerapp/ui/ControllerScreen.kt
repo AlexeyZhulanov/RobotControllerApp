@@ -40,10 +40,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -58,38 +58,6 @@ import kotlinx.coroutines.delay
 import kotlin.collections.chunked
 import kotlin.collections.forEach
 
-sealed interface ControllerScreenLayoutParams {
-    val parentBoxModifier: Modifier
-    val topBarModifier: Modifier
-    val topBarAlignment: Alignment
-    val parentColumnModifier: Modifier
-    val joystickModifier: Modifier
-    val joystickAlignment: Alignment
-    val motorControlModifier: Modifier
-    val motorControlAlignment: Alignment
-
-    object Portrait : ControllerScreenLayoutParams {
-        override val parentBoxModifier: Modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
-        override val topBarModifier: Modifier = Modifier.padding(top = 8.dp)
-        override val topBarAlignment: Alignment = Alignment.TopCenter
-        override val parentColumnModifier: Modifier = Modifier.padding(top = 80.dp)
-        override val joystickModifier: Modifier = Modifier
-        override val joystickAlignment: Alignment = Alignment.BottomCenter
-        override val motorControlModifier: Modifier = Modifier
-        override val motorControlAlignment: Alignment = Alignment.BottomCenter
-    }
-    object Landscape : ControllerScreenLayoutParams {
-        // todo custom params
-        override val parentBoxModifier: Modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
-        override val topBarModifier: Modifier = Modifier.padding(top = 8.dp)
-        override val topBarAlignment: Alignment = Alignment.TopCenter
-        override val parentColumnModifier: Modifier = Modifier.padding(top = 80.dp)
-        override val joystickModifier: Modifier = Modifier
-        override val joystickAlignment: Alignment = Alignment.BottomCenter
-        override val motorControlModifier: Modifier = Modifier
-        override val motorControlAlignment: Alignment = Alignment.BottomCenter
-    }
-}
 
 @Composable
 fun ControllerScreen(
@@ -125,133 +93,139 @@ fun ControllerScreen(
     // Получаем текущую ориентацию экрана (книжная или альбомная)
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val layoutConfig = remember(isLandscape) {
-        if(isLandscape) ControllerScreenLayoutParams.Landscape else ControllerScreenLayoutParams.Portrait
-    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFFC6C5C9))) {
-        Box(modifier = layoutConfig.parentBoxModifier) {
-            TopBar(
-                modifier = layoutConfig.topBarModifier.align(layoutConfig.topBarAlignment),
-                boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
-                wsState = wsState,
-                onSettingsClick = onOpenPinEditor,
-                onCameraClick = { showCamera = !showCamera }
-            )
-            // todo под горизонтальную ориентацию нужен вообще другой компонент
-            // Для альбомной мы либо делаем "таблицу" и в центральной ячейке камера, либо зададим
-            // в процентах ширину и высоту также вычислим
-            // Под горизонталку нужен свой компонент сенсор и кнопка (более простые прямоугольные)
-            Column(layoutConfig.parentColumnModifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+        if(isLandscape) {
+            // Альбомная ориентация
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val sideWidth = maxWidth * 0.1f
+                val topHeight = maxHeight * 0.18f
+                val bottomHeight = maxHeight * 0.2f
+                val maxH = maxHeight
+                val maxW = maxWidth
+
+                // Камера под всем UI
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    val weight1 = remember(sensorData.size) {
-                        when {
-                            sensorData.size in 0..2 -> 1f
-                            sensorData.size % 3 == 0 -> sensorData.size / 3f
-                            else -> (sensorData.size / 3 + 1).toFloat()
-                        }
-                    }
-                    val weight2 = remember(dev.size) {
-                        when {
-                            dev.size in 0..2 -> 1f
-                            dev.size % 3 == 0 -> dev.size / 3f
-                            else -> (dev.size / 3 + 1).toFloat()
-                        }
-                    }
-                    if(sensorData.isNotEmpty()) {
-                        Sensors(
-                            modifier = Modifier.weight(weight1),
-                            rowCount = weight1.toInt(),
-                            data = sensorData
-                        )
-                    }
-                    if(dev.isNotEmpty()) {
-                        CustomButtons(
-                            modifier = Modifier.weight(weight2),
-                            rowCount = weight2.toInt(),
-                            devices = dev,
-                            onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
-                        )
+                    if (showCamera) {
+                        Image(painter = painterResource(R.drawable.test),
+                            modifier = Modifier.fillMaxSize(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop)
+                        // todo вернуть
+//                        if(cameraIp != null) {
+//                            MjpegSurface(
+//                                url = "http://${cameraIp}:81", // Порт 81 как в прошивке
+//                                modifier = Modifier.fillMaxSize()
+//                            )
+//                        }
                     }
                 }
-                if(showCamera) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black),
-                        contentAlignment = Alignment.Center) {
-                        if(cameraIp != null) {
-                            MjpegSurface(
-                                url = "http://${cameraIp}:81", // Порт 81 как в прошивке
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
+
+                // Верхняя панель
+                TopBarLandscape(
+                    modifier = Modifier.fillMaxWidth().height(topHeight).navigationBarsPadding().align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.3f)),
+                    boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
+                    wsState = wsState,
+                    onSettingsClick = onOpenPinEditor,
+                    onCameraClick = { showCamera = !showCamera }
+                )
+                // как идея, просто сделать padding(horizontal = 40.dp) - воткнуть по углам кам и схему
+                // далее какой-то компонент (условно Row, но надо всунуть в центр название платы и статус)
+
+
+                // Нижняя панель
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(bottomHeight).navigationBarsPadding()
+                        .padding(horizontal = sideWidth).align(Alignment.BottomCenter)) {
+                    // todo bottomButtons()
+                    // тут обычные кнопки, но ужим уже будет по горизонтали, а не по вертикали
                 }
-                val w = remember(showCamera, sensorData.size, dev.size) {
+
+                // Левая панель
+                Box(
+                    modifier = Modifier.fillMaxHeight().width(sideWidth).padding(top = topHeight)
+                        .align(Alignment.CenterStart)
+                ) {
+                    // todo leftPanel()
+                    // сюда можно существующую логику кнопок и сенсоров вставить с ужимом по вертикали
+                    // только понятное дело всего один столбец может быть
+                }
+
+                // Правая панель
+                Box(
+                    modifier = Modifier.fillMaxHeight().width(sideWidth).padding(top = topHeight)
+                        .align(Alignment.CenterEnd)
+                ) {
+                    // todo rightPanel()
+                    // аналогично как левая панель
+                }
+
+                // Джойстик
+                BottomPanelLandscape(
+                    modifier = Modifier.navigationBarsPadding().align(Alignment.BottomEnd),
+                    h = maxH,
+                    w = maxW,
+                    devices = devices,
+                    onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) }
+                )
+
+//                SlideOutControlPanel(
+//                    modifier = Modifier.navigationBarsPadding().height(bottomPanelHeight).align(Alignment.BottomEnd),
+//                    panelWidth = panelWidth
+//                ) {
+//                    BottomPanel(
+//                        modifier = Modifier.fillMaxSize(),
+//                        devices = devices,
+//                        onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) }
+//                    )
+//                }
+            }
+        } else {
+            // Книжная ориентация
+            Box(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                TopBar(
+                    modifier = Modifier.padding(top = 8.dp).align(Alignment.TopCenter),
+                    boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
+                    wsState = wsState,
+                    onSettingsClick = onOpenPinEditor,
+                    onCameraClick = { showCamera = !showCamera }
+                )
+                Column(Modifier.padding(top = 80.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    TopPanel(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        sensorData = sensorData,
+                        dev = dev,
+                        onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
+                    )
                     if(showCamera) {
-                        when {
-                            sensorData.isEmpty() -> 1.5f
-                            dev.isEmpty() -> 1.5f
-                            sensorData.size <= 3 && dev.size <= 3 -> 1.2f
-                            else -> 1f
-                        }
-                    } else 0.7f
-                }
-                Box(modifier = Modifier.weight(w).fillMaxWidth(),
-                    contentAlignment = Alignment.Center) {
-                    val motors = remember(devices) {
-                        devices.filter { it.type == "motor" }
-                    }
-                    when(motors.size) {
-                        in 0..2 -> {
-                            BoxWithConstraints {
-                                val size = min(maxWidth, maxHeight) * 0.7f
-                                Joystick(
-                                    modifier = layoutConfig.joystickModifier.align(layoutConfig.joystickAlignment),
-                                    size = size,
-                                    enabled = motors.isNotEmpty(),
-                                    onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
-                                        when(motors.size) {
-                                            0 -> {
-                                                // нет моторов — ничего не делаем
-                                            }
-                                            1 -> {
-                                                // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
-                                                val motor = motors[0]
-                                                // вызываем viewModel, передаём signed speed
-                                                viewModel.setMotorSpeed(motor, leftPwmSigned)
-                                            }
-                                            else -> {
-                                                // два мотора - используем первые два как лев/право
-                                                val leftMotor = motors[0]
-                                                val rightMotor = motors[1]
-                                                viewModel.setMotorSpeed(leftMotor, leftPwmSigned)
-                                                viewModel.setMotorSpeed(rightMotor, rightPwmSigned)
-                                            }
-                                        }
-                                    }
+                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black),
+                            contentAlignment = Alignment.Center) {
+                            if(cameraIp != null) {
+                                MjpegSurface(
+                                    url = "http://${cameraIp}:81", // Порт 81 как в прошивке
+                                    modifier = Modifier.fillMaxSize()
                                 )
                             }
                         }
-                        else -> {
-                            // три или четыре мотора
-                            MotorControl(
-                                modifier = layoutConfig.motorControlModifier.align(layoutConfig.motorControlAlignment),
-                                motors = motors,
-                                onCommand = { motorName, motorSpeed ->
-                                    val motor = motors.find { it.name == motorName }
-                                    if (motor != null) {
-                                        viewModel.setMotorSpeed(motor, motorSpeed)
-                                    } else {
-                                        // Сюда код не должен попасть, но это хорошая проверка
-                                        Log.e("testMotorControl", "Ошибка: мотор с именем $motorName не найден!")
-                                    }
-                                }
-                            )
-                        }
                     }
+                    val w = remember(showCamera, sensorData.size, dev.size) {
+                        if(showCamera) {
+                            when {
+                                sensorData.isEmpty() -> 1.5f
+                                dev.isEmpty() -> 1.5f
+                                sensorData.size <= 3 && dev.size <= 3 -> 1.2f
+                                else -> 1f
+                            }
+                        } else 0.7f
+                    }
+                    BottomPanel(
+                        modifier = Modifier.weight(w).fillMaxWidth(),
+                        devices = devices,
+                        onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) }
+                    )
                 }
             }
         }
@@ -293,6 +267,198 @@ fun TopBar(
             contentDescription = "MicroChip",
             modifier = Modifier.size(45.dp).clickable { onSettingsClick() }
         )
+    }
+}
+
+@Composable
+fun TopBarLandscape(
+    modifier: Modifier,
+    boardName: String,
+    wsState: WsState,
+    onSettingsClick: () -> Unit,
+    onCameraClick: () -> Unit
+) {
+    Box(modifier = modifier) {
+        Image(
+            painter = painterResource(R.drawable.ic_cam),
+            contentDescription = "CameraMode",
+            modifier = Modifier
+                .statusBarsPadding()
+                .size(45.dp)
+                .align(Alignment.CenterStart)
+                .padding(3.dp)
+                .clickable(onClick = { onCameraClick() })
+        )
+        Image(
+            painter = painterResource(R.drawable.ic_chip),
+            contentDescription = "MicroChip",
+            modifier = Modifier.statusBarsPadding().size(45.dp).align(Alignment.CenterEnd).clickable { onSettingsClick() }
+        )
+
+    }
+}
+
+@Composable
+fun TopPanel(modifier: Modifier, sensorData: Map<String, Float>, dev: List<Device>,
+             onDeviceToggle: (Device, Boolean) -> Unit) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        val weight1 = remember(sensorData.size) {
+            when {
+                sensorData.size in 0..2 -> 1f
+                sensorData.size % 3 == 0 -> sensorData.size / 3f
+                else -> (sensorData.size / 3 + 1).toFloat()
+            }
+        }
+        val weight2 = remember(dev.size) {
+            when {
+                dev.size in 0..2 -> 1f
+                dev.size % 3 == 0 -> dev.size / 3f
+                else -> (dev.size / 3 + 1).toFloat()
+            }
+        }
+        if(sensorData.isNotEmpty()) {
+            Sensors(
+                modifier = Modifier.weight(weight1),
+                rowCount = weight1.toInt(),
+                data = sensorData
+            )
+        }
+        if(dev.isNotEmpty()) {
+            CustomButtons(
+                modifier = Modifier.weight(weight2),
+                rowCount = weight2.toInt(),
+                devices = dev,
+                onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
+            )
+        }
+    }
+}
+
+@Composable
+fun BottomPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>, onSetMotorSpeed: (Device, Int) -> Unit) {
+    val motors = remember(devices) {
+        devices.filter { it.type == "motor" }
+    }
+    when(motors.size) {
+        in 0..2 -> {
+            SlideOutControlPanel(
+                modifier = modifier.height(h * 0.6f),
+                panelWidth = w * 0.3f
+            ) {
+                BoxWithConstraints {
+                    val size = min(maxWidth, maxHeight) * 0.75f
+                    Joystick(
+                        modifier = Modifier.fillMaxSize(),
+                        size = size,
+                        enabled = motors.isNotEmpty(),
+                        isTransparent = true,
+                        onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
+                            when(motors.size) {
+                                0 -> {
+                                    // нет моторов — ничего не делаем
+                                }
+                                1 -> {
+                                    // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
+                                    val motor = motors[0]
+                                    // вызываем viewModel, передаём signed speed
+                                    onSetMotorSpeed(motor, leftPwmSigned)
+                                }
+                                else -> {
+                                    // два мотора - используем первые два как лев/право
+                                    val leftMotor = motors[0]
+                                    val rightMotor = motors[1]
+                                    onSetMotorSpeed(leftMotor, leftPwmSigned)
+                                    onSetMotorSpeed(rightMotor, rightPwmSigned)
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        }
+        else -> {
+            // три и более мотора
+            SlideOutControlPanel(
+                modifier = modifier.height(h * 0.65f),
+                panelWidth = w * 0.4f
+            ) {
+                MotorControl(
+                    modifier = Modifier.fillMaxSize(),
+                    motors = motors,
+                    isNeedBackground = true,
+                    onCommand = { motorName, motorSpeed ->
+                        val motor = motors.find { it.name == motorName }
+                        if (motor != null) {
+                            onSetMotorSpeed(motor, motorSpeed)
+                        } else {
+                            // Сюда код не должен попасть, но это хорошая проверка
+                            Log.e("testMotorControl", "Ошибка: мотор с именем $motorName не найден!")
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BottomPanel(modifier: Modifier, devices: List<Device>, onSetMotorSpeed: (Device, Int) -> Unit) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        val motors = remember(devices) {
+            devices.filter { it.type == "motor" }
+        }
+        when(motors.size) {
+            in 0..2 -> {
+                BoxWithConstraints {
+                    val size = min(maxWidth, maxHeight) * 0.7f
+                    Joystick(
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        size = size,
+                        enabled = motors.isNotEmpty(),
+                        onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
+                            when(motors.size) {
+                                0 -> {
+                                    // нет моторов — ничего не делаем
+                                }
+                                1 -> {
+                                    // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
+                                    val motor = motors[0]
+                                    // вызываем viewModel, передаём signed speed
+                                    onSetMotorSpeed(motor, leftPwmSigned)
+                                }
+                                else -> {
+                                    // два мотора - используем первые два как лев/право
+                                    val leftMotor = motors[0]
+                                    val rightMotor = motors[1]
+                                    onSetMotorSpeed(leftMotor, leftPwmSigned)
+                                    onSetMotorSpeed(rightMotor, rightPwmSigned)
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+            else -> {
+                // три или четыре мотора
+                MotorControl(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    motors = motors,
+                    onCommand = { motorName, motorSpeed ->
+                        val motor = motors.find { it.name == motorName }
+                        if (motor != null) {
+                            onSetMotorSpeed(motor, motorSpeed)
+                        } else {
+                            // Сюда код не должен попасть, но это хорошая проверка
+                            Log.e("testMotorControl", "Ошибка: мотор с именем $motorName не найден!")
+                        }
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -480,10 +646,4 @@ fun isDifferenceMoreThan40Percent(a: Float, b: Float): Boolean {
     val percentage = ((max - min) / max) * 100
 
     return percentage > 40
-}
-
-@Composable
-@Preview
-fun TestControllerScreen() {
-    ControllerScreen(onOpenPinEditor = {})
 }

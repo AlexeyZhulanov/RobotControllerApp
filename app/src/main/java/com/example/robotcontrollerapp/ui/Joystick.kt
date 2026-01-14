@@ -30,10 +30,14 @@ fun Joystick(
     modifier: Modifier = Modifier,
     size: Dp = 200.dp,
     enabled: Boolean = true,
+    isTransparent: Boolean = false,
     onMotorsChanged: (leftSpeed: Int, rightSpeed: Int) -> Unit
 ) {
     val radius = size / 2
     var handlePosition by remember { mutableStateOf(Offset.Zero) }
+    val (innerColor, outerColor) = if(isTransparent) {
+        Color.White.copy(alpha = 0.5f) to Color.Black.copy(alpha = 0.2f)
+    } else Color.DarkGray to Color.LightGray
 
     Box(
         modifier = modifier
@@ -88,7 +92,7 @@ fun Joystick(
         Box(
             modifier = Modifier
                 .size(size)
-                .background(Color.LightGray, shape = CircleShape)
+                .background(outerColor, shape = CircleShape)
         )
         // внутренний круг (ручка)
         Box(
@@ -100,7 +104,7 @@ fun Joystick(
                     )
                 }
                 .size(size / 3)
-                .background(Color.DarkGray, shape = CircleShape)
+                .background(innerColor, shape = CircleShape)
         )
     }
 }

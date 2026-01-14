@@ -1,6 +1,5 @@
 package com.example.robotcontrollerapp.ui
 
-import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
@@ -65,6 +64,7 @@ private enum class ControlMode { Individual, Collective }
 fun MotorControl(
     modifier: Modifier = Modifier,
     motors: List<Device>, // Передаём отфильтрованный список моторов
+    isNeedBackground: Boolean = false,
     onCommand: (name: String, speed: Int) -> Unit
 ) {
     var controlMode by remember { mutableStateOf(ControlMode.Individual) }
@@ -91,7 +91,7 @@ fun MotorControl(
                 onClick = { controlMode = ControlMode.Individual },
                 selected = controlMode == ControlMode.Individual
             ) {
-                Text("По отдельности")
+                Text("Раздельно")
             }
             SegmentedButton(
                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
@@ -116,6 +116,7 @@ fun MotorControl(
                 ControlMode.Individual -> IndividualMotorControls(
                     motors = motors,
                     sliderValues = sliderValues,
+                    isNeedBackground = isNeedBackground,
                     onValueChange = { motorName, newValue ->
                         sliderValues[motorName] = newValue
                     },
@@ -127,6 +128,7 @@ fun MotorControl(
                 ControlMode.Collective -> CollectiveMotorControls(
                     collectiveSpeed = collectiveSpeed,
                     collectiveDirection = collectiveDirection,
+                    isNeedBackground = isNeedBackground,
                     onDirectionChange = { newDirection ->
                         collectiveDirection = newDirection
                         // Немедленно отправляем команду при смене направления
@@ -153,6 +155,7 @@ fun MotorControl(
 private fun IndividualMotorControls(
     motors: List<Device>,
     sliderValues: Map<String, Float>,
+    isNeedBackground: Boolean,
     onValueChange: (motorName: String, newValue: Float) -> Unit,
     onValueChangeFinished: (motorName: String) -> Unit
 ) {
@@ -183,7 +186,7 @@ private fun IndividualMotorControls(
                 // Вычисляем "силу" (от 0.0 до 1.0)
                 val fraction = (abs(sliderValue) / 255f).coerceIn(0f, 1f)
                 // Определяем наши цвета
-                val dullColor = Color.DarkGray.copy(alpha = 0.7f) // Тусклый серый в центре
+                val dullColor = Color.DarkGray.copy(alpha = if(isNeedBackground) 1f else 0.7f) // Тусклый серый в центре
                 val positiveColor = Color.Blue   // Яркий синий (для +)
                 val negativeColor = Color.Red    // Яркий красный (для -)
                 // Выбираем, в какой цвет красить (в синий или красный)
@@ -232,6 +235,7 @@ private fun IndividualMotorControls(
 private fun CollectiveMotorControls(
     collectiveSpeed: Float,
     collectiveDirection: Int,
+    isNeedBackground: Boolean,
     onDirectionChange: (Int) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onSpeedChangeFinished: () -> Unit
@@ -240,7 +244,6 @@ private fun CollectiveMotorControls(
         val h = maxHeight
         val topPadding = (h * 0.05f).coerceIn(2.dp, 32.dp)
         val spacerHeight = (h * 0.1f).coerceIn(8.dp, 32.dp)
-        Log.d("testVals", "topPad: $topPadding, spacerH: $spacerHeight")
 
         Column(
             modifier = Modifier.fillMaxSize().padding(top = topPadding),
@@ -274,7 +277,7 @@ private fun CollectiveMotorControls(
             Spacer(Modifier.height(spacerHeight))
 
             val fraction = (collectiveSpeed / 255f).coerceIn(0f, 1f)
-            val dullColor = Color.DarkGray.copy(alpha = 0.7f) // Тусклый серый в начале
+            val dullColor = Color.DarkGray.copy(alpha = if(isNeedBackground) 1f else 0.7f) // Тусклый серый в начале
             val targetColor = if(collectiveDirection == 1) Color.Blue else Color.Red
             // "Смешиваем" тусклый цвет с нашим целевым цветом
             val dynamicColor = lerp(dullColor, targetColor, fraction)
