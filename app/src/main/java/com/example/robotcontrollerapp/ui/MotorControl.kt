@@ -5,6 +5,7 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -159,10 +161,13 @@ private fun IndividualMotorControls(
     onValueChange: (motorName: String, newValue: Float) -> Unit,
     onValueChangeFinished: (motorName: String) -> Unit
 ) {
+    val initialModifier = if(isNeedBackground) Modifier.fillMaxSize()
+        .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+    else Modifier.fillMaxSize()
     Row(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxSize().drawBehind {
+        modifier = initialModifier.drawBehind {
             // Создаем эффект пунктира: 10 пикселей линия, 10 пикселей пробел
             val dashEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
             drawLine(
@@ -186,7 +191,7 @@ private fun IndividualMotorControls(
                 // Вычисляем "силу" (от 0.0 до 1.0)
                 val fraction = (abs(sliderValue) / 255f).coerceIn(0f, 1f)
                 // Определяем наши цвета
-                val dullColor = Color.DarkGray.copy(alpha = if(isNeedBackground) 1f else 0.7f) // Тусклый серый в центре
+                val dullColor = if(isNeedBackground) Color(0xFFF0F0F0) else Color.DarkGray.copy(alpha = 0.7f) // Тусклый серый в центре
                 val positiveColor = Color.Blue   // Яркий синий (для +)
                 val negativeColor = Color.Red    // Яркий красный (для -)
                 // Выбираем, в какой цвет красить (в синий или красный)
@@ -245,8 +250,11 @@ private fun CollectiveMotorControls(
         val topPadding = (h * 0.05f).coerceIn(2.dp, 32.dp)
         val spacerHeight = (h * 0.1f).coerceIn(8.dp, 32.dp)
 
+        val initialModifier = if(isNeedBackground) Modifier.fillMaxWidth().padding(top = topPadding)
+            .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+        else Modifier.fillMaxSize().padding(top = topPadding)
         Column(
-            modifier = Modifier.fillMaxSize().padding(top = topPadding),
+            modifier = initialModifier,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Кнопки FWD / BWD
@@ -277,7 +285,7 @@ private fun CollectiveMotorControls(
             Spacer(Modifier.height(spacerHeight))
 
             val fraction = (collectiveSpeed / 255f).coerceIn(0f, 1f)
-            val dullColor = Color.DarkGray.copy(alpha = if(isNeedBackground) 1f else 0.7f) // Тусклый серый в начале
+            val dullColor = if(isNeedBackground) Color(0xFFF0F0F0) else Color.DarkGray.copy(alpha = 0.7f) // Тусклый серый в начале
             val targetColor = if(collectiveDirection == 1) Color.Blue else Color.Red
             // "Смешиваем" тусклый цвет с нашим целевым цветом
             val dynamicColor = lerp(dullColor, targetColor, fraction)

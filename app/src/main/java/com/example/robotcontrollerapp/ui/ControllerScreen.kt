@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -76,7 +77,12 @@ fun ControllerScreen(
     val boardInfo = "ESP32" to "123123123"
     val devices = listOf(Device("button1", 1, type = "button"),
         Device("button2", 2, type = "button"), Device("button3", 3, type = "button"),
-        Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"))
+//        Device("button4", 11, type = "button"), Device("button5", 12, type = "button"),
+//        Device("button6", 13, type = "button"), Device("button7", 14, type = "button"),
+//        Device("button8", 15, type = "button"), Device("button9", 16, type = "button"),
+//        Device("button10", 17, type = "button"), Device("button11", 18, type = "button"),
+        Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"),
+        Device("t3", 7, type = "motor"))
     val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f)
     val dev = devices.filter { it.type != "sensor" && it.type != "motor" }
     // ==================================== TODO
@@ -100,7 +106,8 @@ fun ControllerScreen(
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val sideWidth = maxWidth * 0.1f
                 val topHeight = maxHeight * 0.18f
-                val bottomHeight = maxHeight * 0.2f
+                val bottomHeight = maxHeight * 0.25f
+                val bottomWidth = maxWidth * 0.6f
                 val maxH = maxHeight
                 val maxW = maxWidth
 
@@ -137,6 +144,13 @@ fun ControllerScreen(
 
 
                 // Нижняя панель
+                BottomPanelLandscape(
+                    modifier = Modifier.width(bottomWidth).height(bottomHeight).align(Alignment.BottomStart),
+                    height = bottomHeight,
+                    width = bottomWidth,
+                    devices = dev,
+                    onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
+                )
                 Box(
                     modifier = Modifier.fillMaxWidth().height(bottomHeight).navigationBarsPadding()
                         .padding(horizontal = sideWidth).align(Alignment.BottomCenter)) {
@@ -164,24 +178,13 @@ fun ControllerScreen(
                 }
 
                 // Джойстик
-                BottomPanelLandscape(
+                MotorsPanelLandscape(
                     modifier = Modifier.navigationBarsPadding().align(Alignment.BottomEnd),
                     h = maxH,
                     w = maxW,
                     devices = devices,
                     onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) }
                 )
-
-//                SlideOutControlPanel(
-//                    modifier = Modifier.navigationBarsPadding().height(bottomPanelHeight).align(Alignment.BottomEnd),
-//                    panelWidth = panelWidth
-//                ) {
-//                    BottomPanel(
-//                        modifier = Modifier.fillMaxSize(),
-//                        devices = devices,
-//                        onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) }
-//                    )
-//                }
             }
         } else {
             // Книжная ориентация
@@ -294,7 +297,7 @@ fun TopBarLandscape(
             contentDescription = "MicroChip",
             modifier = Modifier.statusBarsPadding().size(45.dp).align(Alignment.CenterEnd).clickable { onSettingsClick() }
         )
-
+        // todo тут продолжить
     }
 }
 
@@ -339,7 +342,7 @@ fun TopPanel(modifier: Modifier, sensorData: Map<String, Float>, dev: List<Devic
 }
 
 @Composable
-fun BottomPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>, onSetMotorSpeed: (Device, Int) -> Unit) {
+fun MotorsPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>, onSetMotorSpeed: (Device, Int) -> Unit) {
     val motors = remember(devices) {
         devices.filter { it.type == "motor" }
     }
@@ -347,7 +350,7 @@ fun BottomPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>
         in 0..2 -> {
             SlideOutControlPanel(
                 modifier = modifier.height(h * 0.6f),
-                panelWidth = w * 0.3f
+                panelSize = w * 0.3f
             ) {
                 BoxWithConstraints {
                     val size = min(maxWidth, maxHeight) * 0.75f
@@ -384,7 +387,7 @@ fun BottomPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>
             // три и более мотора
             SlideOutControlPanel(
                 modifier = modifier.height(h * 0.65f),
-                panelWidth = w * 0.4f
+                panelSize = w * 0.4f
             ) {
                 MotorControl(
                     modifier = Modifier.fillMaxSize(),
@@ -457,6 +460,39 @@ fun BottomPanel(modifier: Modifier, devices: List<Device>, onSetMotorSpeed: (Dev
                         }
                     }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun BottomPanelLandscape(modifier: Modifier, height: Dp, width: Dp, devices: List<Device>, onDeviceToggle: (Device, Boolean) -> Unit) {
+    SlideOutControlPanel(
+        modifier = modifier,
+        panelSize = height,
+        isVertical = true
+    ) {
+        val horizontalSpacing = 10.dp
+        val count = devices.size
+        val availableWidth = width - horizontalSpacing * (count - 1)
+        // todo проверка, влазят ли сюда все кнопки, ввести минимальный порог размера
+        // допустим if availableWidth < 50.dp { ... }
+
+        val availableHeight = height - 32.dp
+        val cellWidth = availableWidth / count
+        val cellSize = minOf(cellWidth, availableHeight)
+        Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
+            devices.forEach { device ->
+                key(device) {
+                    CustomButton(
+                        width = cellSize,
+                        height = cellSize,
+                        isQuad = true,
+                        isLandscape = true,
+                        device = device,
+                        onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
+                    )
+                }
             }
         }
     }
@@ -561,7 +597,8 @@ fun Sensor(width: Dp, height: Dp, isQuad: Boolean, name: String, value: Float) {
 }
 
 @Composable
-fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device, onDeviceToggle: (Device, Boolean) -> Unit) {
+fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device,
+                 isLandscape: Boolean = false, onDeviceToggle: (Device, Boolean) -> Unit) {
     var isOn by remember { mutableStateOf(device.state) }
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -574,14 +611,15 @@ fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device, onDevic
     val imageWeight = if(isQuad) 3f else 2.5f
 
     val bColor = when {
-        isPressed -> Color(0xFFB5E0C2)
-        isOn -> Color(0xFF81C784)
-        else -> Color(0xFFF0F0F0)
+        isPressed -> if(isLandscape) Color(0xFFB5E0C2).copy(alpha = 0.5f) else Color(0xFFB5E0C2)
+        isOn -> if(isLandscape) Color(0xFF81C784).copy(alpha = 0.8f) else Color(0xFF81C784)
+        else -> if(isLandscape) Color.Black.copy(alpha = 0.4f) else Color(0xFFF0F0F0)
     }
     val backgroundColor by animateColorAsState(
         targetValue = bColor,
         label = "buttonColor"
     )
+    val textColor = if(isLandscape) Color.White else Color.Black
     Box(
         modifier = Modifier
             .width(avgSizeForWidth)
@@ -606,8 +644,8 @@ fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device, onDevic
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxHeight(fraction = fraction).fillMaxWidth()
         ) {
-            Image(painter = painterResource(R.drawable.ic_bulb), contentDescription = "IconButton", modifier = Modifier.weight(imageWeight).fillMaxWidth())
-            Text(text = device.name, color = Color.Black, fontSize = fs.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, style = fixedTextStyle)
+            Icon(painter = painterResource(R.drawable.ic_bulb), contentDescription = "IconButton", modifier = Modifier.weight(imageWeight).fillMaxWidth(), tint = textColor)
+            Text(text = device.name, color = textColor, fontSize = fs.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, style = fixedTextStyle)
         }
     }
 }
