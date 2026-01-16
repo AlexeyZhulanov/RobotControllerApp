@@ -82,7 +82,8 @@ fun ControllerScreen(
         Device("button4", 11, type = "button"), Device("button5", 12, type = "button"),
         Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"),
         Device("t3", 7, type = "motor"))
-    val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f)
+    val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f,
+        "sensor_A2" to 5.32f, "sensor_A3" to 4.22f, "sensor_A4" to 5.32f, "sensor_A5" to 4.22f)
     val dev = devices.filter { it.type != "sensor" && it.type != "motor" }
     // ==================================== TODO
     LaunchedEffect(devices) {
@@ -103,7 +104,6 @@ fun ControllerScreen(
         if(isLandscape) {
             // Альбомная ориентация
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val sideWidth = maxWidth * 0.1f
                 val topHeight = maxHeight * 0.18f
                 val bottomHeight = maxHeight * 0.25f
                 val bottomWidth = maxWidth * 0.56f
@@ -135,12 +135,10 @@ fun ControllerScreen(
                     modifier = Modifier.fillMaxWidth().height(topHeight).navigationBarsPadding().align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.3f)),
                     boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
                     wsState = wsState,
+                    sensorData = sensorData,
                     onSettingsClick = onOpenPinEditor,
                     onCameraClick = { showCamera = !showCamera }
                 )
-                // как идея, просто сделать padding(horizontal = 40.dp) - воткнуть по углам кам и схему
-                // далее какой-то компонент (условно Row, но надо всунуть в центр название платы и статус)
-
 
                 // Нижняя панель
                 BottomPanelLandscape(
@@ -150,31 +148,6 @@ fun ControllerScreen(
                     devices = dev,
                     onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
                 )
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(bottomHeight).navigationBarsPadding()
-                        .padding(horizontal = sideWidth).align(Alignment.BottomCenter)) {
-                    // todo bottomButtons()
-                    // тут обычные кнопки, но ужим уже будет по горизонтали, а не по вертикали
-                }
-
-                // Левая панель
-                Box(
-                    modifier = Modifier.fillMaxHeight().width(sideWidth).padding(top = topHeight)
-                        .align(Alignment.CenterStart)
-                ) {
-                    // todo leftPanel()
-                    // сюда можно существующую логику кнопок и сенсоров вставить с ужимом по вертикали
-                    // только понятное дело всего один столбец может быть
-                }
-
-                // Правая панель
-                Box(
-                    modifier = Modifier.fillMaxHeight().width(sideWidth).padding(top = topHeight)
-                        .align(Alignment.CenterEnd)
-                ) {
-                    // todo rightPanel()
-                    // аналогично как левая панель
-                }
 
                 // Джойстик
                 MotorsPanelLandscape(
@@ -277,26 +250,64 @@ fun TopBarLandscape(
     modifier: Modifier,
     boardName: String,
     wsState: WsState,
+    sensorData: Map<String, Float>,
     onSettingsClick: () -> Unit,
     onCameraClick: () -> Unit
 ) {
     Box(modifier = modifier) {
+        val iconsSize = 40.dp
         Image(
             painter = painterResource(R.drawable.ic_cam),
             contentDescription = "CameraMode",
             modifier = Modifier
-                .statusBarsPadding()
-                .size(45.dp)
-                .align(Alignment.CenterStart)
+                .size(iconsSize)
+                .align(Alignment.BottomStart)
                 .padding(3.dp)
                 .clickable(onClick = { onCameraClick() })
         )
         Image(
             painter = painterResource(R.drawable.ic_chip),
             contentDescription = "MicroChip",
-            modifier = Modifier.statusBarsPadding().size(45.dp).align(Alignment.CenterEnd).clickable { onSettingsClick() }
+            modifier = Modifier.size(iconsSize).align(Alignment.BottomEnd).clickable { onSettingsClick() }
         )
-        // todo тут продолжить
+        Row(modifier = Modifier.fillMaxSize().padding(horizontal = iconsSize), horizontalArrangement = Arrangement.SpaceEvenly) {
+            val entries = sensorData.toList()
+            val halfSize = (entries.size + 1) / 2
+            val firstHalf = entries.take(halfSize)
+            val secondHalf = entries.drop(halfSize)
+
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                val chunks = firstHalf.chunked(3)
+                chunks.forEach { chunk ->
+                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        chunk.forEach { (name, value) ->
+                            SensorLandscape(modifier = Modifier, name = name, value = value)
+                        }
+                    }
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 8.dp)) {
+                Text(text = boardName, color = Color.White, fontSize = 16.sp)
+                when(wsState) {
+                    WsState.CONNECTED -> Text(text = "Подключено", color = Color(0xFF4CAF50), fontSize = 14.sp)
+                    WsState.CONNECTING -> AnimatedConnectingText(textColor = Color.White, fontSize = 14.sp)
+                    WsState.CLOSED -> Text(text = "Отключено", color = Color.LightGray, fontSize = 14.sp)
+                    WsState.ERROR -> Text(text = "Ошибка", color = Color.Red, fontSize = 14.sp)
+                }
+            }
+
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                val chunks = secondHalf.chunked(3)
+                chunks.forEach { chunk ->
+                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        chunk.forEach { (name, value) ->
+                            SensorLandscape(modifier = Modifier, name = name, value = value)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -611,6 +622,29 @@ fun Sensor(width: Dp, height: Dp, isQuad: Boolean, name: String, value: Float) {
 }
 
 @Composable
+fun SensorLandscape(modifier: Modifier, name: String, value: Float) {
+    Box(modifier = modifier.background(color = Color.Black.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(4.dp)).padding(vertical = 2.dp, horizontal = 4.dp)) {
+        Column {
+            Text(
+                text = name,
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 14.sp,
+                maxLines = 1,
+                style = fixedTextStyle
+            )
+            Text(
+                text = value.toString(),
+                color = Color.White,
+                fontSize = 18.sp,
+                maxLines = 1,
+                style = fixedTextStyle
+            )
+        }
+    }
+}
+
+@Composable
 fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device,
                  isLandscape: Boolean = false, onDeviceToggle: (Device, Boolean) -> Unit) {
     var isOn by remember { mutableStateOf(device.state) }
@@ -668,7 +702,8 @@ fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device,
 fun AnimatedConnectingText(
     modifier: Modifier = Modifier,
     baseText: String = "Подключение",
-    fontSize: TextUnit = 16.sp
+    fontSize: TextUnit = 16.sp,
+    textColor: Color = Color.Unspecified
 ) {
     var dotCount by remember { mutableIntStateOf(1) }
 
@@ -683,7 +718,8 @@ fun AnimatedConnectingText(
     Text(
         text = "$baseText${".".repeat(dotCount)}",
         modifier = modifier,
-        fontSize = fontSize
+        fontSize = fontSize,
+        color = textColor
     )
 }
 
