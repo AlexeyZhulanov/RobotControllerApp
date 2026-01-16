@@ -67,6 +67,7 @@ fun MotorControl(
     modifier: Modifier = Modifier,
     motors: List<Device>, // Передаём отфильтрованный список моторов
     isNeedBackground: Boolean = false,
+    isNeedFixPadding: Boolean = false,
     onCommand: (name: String, speed: Int) -> Unit
 ) {
     var controlMode by remember { mutableStateOf(ControlMode.Individual) }
@@ -82,8 +83,10 @@ fun MotorControl(
     var collectiveSpeed by remember { mutableFloatStateOf(0f) }
     var collectiveDirection by remember { mutableIntStateOf(1) } // 1 = FWD, -1 = BWD
 
+    val columnModifier = if(isNeedFixPadding) modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp, end = 16.dp)
+    else modifier.fillMaxWidth().padding(vertical = 4.dp, horizontal = 16.dp)
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = columnModifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Переключатель режимов

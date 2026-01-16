@@ -58,6 +58,8 @@ import com.example.robotcontrollerapp.util.fixedTextStyle
 import kotlinx.coroutines.delay
 import kotlin.collections.chunked
 import kotlin.collections.forEach
+import kotlin.math.ceil
+import kotlin.math.floor
 
 
 @Composable
@@ -77,10 +79,7 @@ fun ControllerScreen(
     val boardInfo = "ESP32" to "123123123"
     val devices = listOf(Device("button1", 1, type = "button"),
         Device("button2", 2, type = "button"), Device("button3", 3, type = "button"),
-//        Device("button4", 11, type = "button"), Device("button5", 12, type = "button"),
-//        Device("button6", 13, type = "button"), Device("button7", 14, type = "button"),
-//        Device("button8", 15, type = "button"), Device("button9", 16, type = "button"),
-//        Device("button10", 17, type = "button"), Device("button11", 18, type = "button"),
+        Device("button4", 11, type = "button"), Device("button5", 12, type = "button"),
         Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"),
         Device("t3", 7, type = "motor"))
     val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f)
@@ -107,7 +106,7 @@ fun ControllerScreen(
                 val sideWidth = maxWidth * 0.1f
                 val topHeight = maxHeight * 0.18f
                 val bottomHeight = maxHeight * 0.25f
-                val bottomWidth = maxWidth * 0.6f
+                val bottomWidth = maxWidth * 0.56f
                 val maxH = maxHeight
                 val maxW = maxWidth
 
@@ -145,7 +144,7 @@ fun ControllerScreen(
 
                 // Нижняя панель
                 BottomPanelLandscape(
-                    modifier = Modifier.width(bottomWidth).height(bottomHeight).align(Alignment.BottomStart),
+                    modifier = Modifier.align(Alignment.BottomStart),
                     height = bottomHeight,
                     width = bottomWidth,
                     devices = dev,
@@ -387,12 +386,13 @@ fun MotorsPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>
             // три и более мотора
             SlideOutControlPanel(
                 modifier = modifier.height(h * 0.65f),
-                panelSize = w * 0.4f
+                panelSize = w * 0.38f
             ) {
                 MotorControl(
                     modifier = Modifier.fillMaxSize(),
                     motors = motors,
                     isNeedBackground = true,
+                    isNeedFixPadding = true,
                     onCommand = { motorName, motorSpeed ->
                         val motor = motors.find { it.name == motorName }
                         if (motor != null) {
@@ -467,31 +467,45 @@ fun BottomPanel(modifier: Modifier, devices: List<Device>, onSetMotorSpeed: (Dev
 
 @Composable
 fun BottomPanelLandscape(modifier: Modifier, height: Dp, width: Dp, devices: List<Device>, onDeviceToggle: (Device, Boolean) -> Unit) {
+    val horizontalSpacing = 10.dp
+    val count = devices.size
+    val availableWidth = width - horizontalSpacing * (count - 1)
+
+    val maxCountInRow = remember(width) {
+        floor(availableWidth / 45.dp)
+    }
+    val rowsCount = remember(devices.size, maxCountInRow) {
+        if(count % maxCountInRow.toInt() == 0) count / maxCountInRow.toInt()
+        else floor(count / maxCountInRow + 1f).toInt()
+    }
+
+    val verticalSpacing = 5.dp
+    val h = height * rowsCount + (verticalSpacing - 32.dp) * (rowsCount - 1)
     SlideOutControlPanel(
-        modifier = modifier,
-        panelSize = height,
+        modifier = modifier.width(width).height(h),
+        panelSize = h,
         isVertical = true
     ) {
-        val horizontalSpacing = 10.dp
-        val count = devices.size
-        val availableWidth = width - horizontalSpacing * (count - 1)
-        // todo проверка, влазят ли сюда все кнопки, ввести минимальный порог размера
-        // допустим if availableWidth < 50.dp { ... }
-
+        val maxCountInRow = ceil(count / rowsCount.toFloat()).toInt()
         val availableHeight = height - 32.dp
-        val cellWidth = availableWidth / count
+        val cellWidth = availableWidth / maxCountInRow
         val cellSize = minOf(cellWidth, availableHeight)
-        Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
-            devices.forEach { device ->
-                key(device) {
-                    CustomButton(
-                        width = cellSize,
-                        height = cellSize,
-                        isQuad = true,
-                        isLandscape = true,
-                        device = device,
-                        onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
-                    )
+        val deviceRows = devices.reversed().chunked(maxCountInRow).reversed()
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(verticalSpacing), horizontalAlignment = Alignment.CenterHorizontally) {
+            deviceRows.forEach { deviceRow ->
+                Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
+                    deviceRow.reversed().forEach { device ->
+                        key(device) {
+                            CustomButton(
+                                width = cellSize,
+                                height = cellSize,
+                                isQuad = true,
+                                isLandscape = true,
+                                device = device,
+                                onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
+                            )
+                        }
+                    }
                 }
             }
         }
