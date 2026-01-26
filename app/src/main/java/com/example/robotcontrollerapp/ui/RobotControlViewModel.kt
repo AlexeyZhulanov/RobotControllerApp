@@ -1,11 +1,16 @@
 package com.example.robotcontrollerapp.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.model.RobotRepository
+import com.example.robotcontrollerapp.model.WsState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -22,6 +27,7 @@ class RobotControlViewModel @Inject constructor(
     val logs = repository.logs // todo можно использовать потом
     val boardInfo = repository.boardInfo
     val cameraIp = repository.cameraIp
+    val isScanning = repository.isScanning
 
     // --- ЛОГИКА ФИЛЬТРАЦИИ СЕНСОРОВ ---
     private val subscribedSensorNames = devices.map { deviceList ->
@@ -38,8 +44,14 @@ class RobotControlViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            repository.searchAndConnect()
-            refreshDevices()
+            while(true) {
+                val state = repository.wsState.value
+                if(state != WsState.CONNECTED && state != WsState.CONNECTING) {
+                    repository.searchAndConnect()
+                    refreshDevices()
+                }
+                delay(5000)
+            }
         }
     }
 

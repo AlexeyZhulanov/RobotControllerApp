@@ -52,7 +52,7 @@ fun SlideOutControlPanel(
         } else {
             when (side) {
                 SlideSide.LeftTop -> (panelSize - handleSize)
-                SlideSide.RightBottom -> -(panelSize - handleSize)
+                SlideSide.RightBottom -> (-panelSize - handleSize)
             }
         },
         animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),

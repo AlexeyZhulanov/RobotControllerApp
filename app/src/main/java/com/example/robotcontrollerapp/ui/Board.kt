@@ -332,7 +332,7 @@ fun getWemosRightPins(): List<BoardPin> {
     return listOf(
         BoardPin("D9", 9),
         BoardPin("D10", 10),
-        BoardPin("GND", null), // Земля
+        //BoardPin("GND", null), // Земля
         BoardPin("A0", 17), // Пока что 17, если что можно поменять
     )
 }

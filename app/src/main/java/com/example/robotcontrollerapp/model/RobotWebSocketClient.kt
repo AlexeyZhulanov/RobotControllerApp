@@ -1,5 +1,6 @@
 package com.example.robotcontrollerapp.model
 
+import android.util.Log
 import com.example.robotcontrollerapp.domain.DetectedPin
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.util.gpioToD
@@ -48,7 +49,12 @@ class RobotWebSocketClient(
             onStateChanged?.invoke(value)
         }
 
+    @Synchronized
     fun connect(url: String) {
+        if (state == WsState.CONNECTED || state == WsState.CONNECTING) {
+            log("connect() ignored: already $state")
+            return
+        }
         this.targetUrl = url
         shouldReconnect = true
         exec.execute { internalConnectWithBackoff() }
@@ -134,7 +140,7 @@ class RobotWebSocketClient(
         } catch (e: Exception) {
             log("Close error: ${e.message}")
         }
-        exec.shutdownNow()
+        client = null
     }
 
     fun forceReconnect() {
@@ -195,6 +201,7 @@ class RobotWebSocketClient(
     }
 
     fun send(text: String) {
+        Log.d("testSend", text)
         thread {
             try {
                 if (client?.isOpen == true) {
@@ -237,7 +244,6 @@ class RobotWebSocketClient(
                         else -> false
                     }
                     val pwm = if (d.has("pwmValue")) d.optInt("pwmValue", 0) else 0
-                    // your Device class might differ; adapt constructor
                     list.add(Device(name = name, pin = gpioToD(pin), type = type, state = state, pwm = pwm))
                 }
                 onDevicesList?.invoke(list)

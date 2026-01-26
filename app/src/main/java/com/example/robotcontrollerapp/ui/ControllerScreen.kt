@@ -1,5 +1,6 @@
 package com.example.robotcontrollerapp.ui
 
+import android.app.Activity
 import android.content.res.Configuration
 import android.util.Log
 import androidx.compose.animation.animateColorAsState
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -43,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -50,6 +53,9 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.robotcontrollerapp.R
 import com.example.robotcontrollerapp.domain.Device
@@ -67,23 +73,30 @@ fun ControllerScreen(
     viewModel: RobotControlViewModel = hiltViewModel(),
     onOpenPinEditor: () -> Unit
 ) { // todo вернуть обратно
-    //val wsState by viewModel.wsState.collectAsState()
-    //val boardInfo by viewModel.boardInfo.collectAsState()
-    //val devices by viewModel.devices.collectAsState()
-    //val sensorData by viewModel.sensorData.collectAsState()
+    val wsState by viewModel.wsState.collectAsState()
+    val isScanning by viewModel.isScanning.collectAsState()
+    val boardInfo by viewModel.boardInfo.collectAsState()
+    val devices by viewModel.devices.collectAsState()
+    val sensorData by viewModel.sensorData.collectAsState()
     val cameraIp by viewModel.cameraIp.collectAsState()
     var showCamera by remember { mutableStateOf(false) }
 
     // FAKE DATA (на время тестирования UI) TODO
-    val wsState = WsState.CONNECTED
-    val boardInfo = "ESP32" to "123123123"
-    val devices = listOf(Device("button1", 1, type = "button"),
-        Device("button2", 2, type = "button"), Device("button3", 3, type = "button"),
-        Device("button4", 11, type = "button"), Device("button5", 12, type = "button"),
-        Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"),
-        Device("t3", 7, type = "motor"))
-    val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f,
-        "sensor_A2" to 5.32f, "sensor_A3" to 4.22f, "sensor_A4" to 5.32f, "sensor_A5" to 4.22f)
+//    val wsState = WsState.CONNECTED
+//    val boardInfo = "ESP32" to "123123123"
+//    val devices = listOf(Device("button1", 1, type = "button"),
+//        Device("button2", 2, type = "button"), Device("button3", 3, type = "button"),
+//        Device("button4", 11, type = "button"), Device("button5", 12, type = "button"),
+//        Device("button6", 13, type = "button"), Device("button7", 14, type = "button"),
+//        Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"),
+//        Device("t3", 7, type = "motor"))
+//    val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f,
+//        "sensor_A2" to 5.32f, "sensor_A3" to 4.22f, "sensor_A4" to 5.32f, "sensor_A5" to 4.22f,
+//        "sensor_A6" to 5.32f, "sensor_A7" to 4.22f,
+//        "sensor_A8" to 5.32f, "sensor_A9" to 4.22f,
+//        "sensor_A10" to 5.32f, "sensor_A11" to 4.22f,
+//        "sensor_A12" to 5.32f, "sensor_A13" to 4.22f)
+        //"sensor_A2" to 5.32f, "sensor_A3" to 4.22f, "sensor_A4" to 5.32f, "sensor_A5" to 4.22f)
     val dev = devices.filter { it.type != "sensor" && it.type != "motor" }
     // ==================================== TODO
     LaunchedEffect(devices) {
@@ -102,11 +115,13 @@ fun ControllerScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFFC6C5C9))) {
         if(isLandscape) {
+            // Скрываем весь худ (открывается по свайпу)
+            HideSystemBarsEffect(hidden = true)
             // Альбомная ориентация
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val topHeight = maxHeight * 0.18f
+                val topHeight = maxHeight * 0.13f
                 val bottomHeight = maxHeight * 0.25f
-                val bottomWidth = maxWidth * 0.56f
+                val bottomWidth = maxWidth * 0.6f
                 val maxH = maxHeight
                 val maxW = maxWidth
 
@@ -132,9 +147,11 @@ fun ControllerScreen(
 
                 // Верхняя панель
                 TopBarLandscape(
-                    modifier = Modifier.fillMaxWidth().height(topHeight).navigationBarsPadding().align(Alignment.TopCenter).background(Color.Black.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                    height = topHeight,
                     boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
                     wsState = wsState,
+                    isScanning = isScanning,
                     sensorData = sensorData,
                     onSettingsClick = onOpenPinEditor,
                     onCameraClick = { showCamera = !showCamera }
@@ -151,7 +168,7 @@ fun ControllerScreen(
 
                 // Джойстик
                 MotorsPanelLandscape(
-                    modifier = Modifier.navigationBarsPadding().align(Alignment.BottomEnd),
+                    modifier = Modifier.align(Alignment.BottomEnd),
                     h = maxH,
                     w = maxW,
                     devices = devices,
@@ -165,6 +182,7 @@ fun ControllerScreen(
                     modifier = Modifier.padding(top = 8.dp).align(Alignment.TopCenter),
                     boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
                     wsState = wsState,
+                    isScanning = isScanning,
                     onSettingsClick = onOpenPinEditor,
                     onCameraClick = { showCamera = !showCamera }
                 )
@@ -212,6 +230,7 @@ fun TopBar(
     modifier: Modifier,
     boardName: String,
     wsState: WsState,
+    isScanning: Boolean,
     onSettingsClick: () -> Unit,
     onCameraClick: () -> Unit
 ) {
@@ -230,10 +249,13 @@ fun TopBar(
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(text = boardName, color = Color.Black, fontSize = 20.sp)
+            if(isScanning && wsState != WsState.CONNECTED) {
+                AnimatedConnectingText()
+            } else
             when(wsState) {
                 WsState.CONNECTED -> Text(text = "Подключено", color = Color(0xFF4CAF50), fontSize = 16.sp)
                 WsState.CONNECTING -> AnimatedConnectingText()
-                WsState.CLOSED -> Text(text = "Отключено", color = Color.LightGray, fontSize = 16.sp)
+                WsState.CLOSED -> Text(text = "Отключено", color = Color.DarkGray.copy(0.6f), fontSize = 16.sp)
                 WsState.ERROR -> Text(text = "Ошибка", color = Color.Red, fontSize = 16.sp)
             }
         }
@@ -248,62 +270,80 @@ fun TopBar(
 @Composable
 fun TopBarLandscape(
     modifier: Modifier,
+    height: Dp,
     boardName: String,
     wsState: WsState,
+    isScanning: Boolean,
     sensorData: Map<String, Float>,
     onSettingsClick: () -> Unit,
     onCameraClick: () -> Unit
 ) {
-    Box(modifier = modifier) {
-        val iconsSize = 40.dp
-        Image(
-            painter = painterResource(R.drawable.ic_cam),
-            contentDescription = "CameraMode",
-            modifier = Modifier
-                .size(iconsSize)
-                .align(Alignment.BottomStart)
-                .padding(3.dp)
-                .clickable(onClick = { onCameraClick() })
-        )
-        Image(
-            painter = painterResource(R.drawable.ic_chip),
-            contentDescription = "MicroChip",
-            modifier = Modifier.size(iconsSize).align(Alignment.BottomEnd).clickable { onSettingsClick() }
-        )
-        Row(modifier = Modifier.fillMaxSize().padding(horizontal = iconsSize), horizontalArrangement = Arrangement.SpaceEvenly) {
-            val entries = sensorData.toList()
-            val halfSize = (entries.size + 1) / 2
-            val firstHalf = entries.take(halfSize)
-            val secondHalf = entries.drop(halfSize)
-
-            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                val chunks = firstHalf.chunked(3)
-                chunks.forEach { chunk ->
-                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        chunk.forEach { (name, value) ->
+    val iconsSize = height * 0.9f
+    val sensorList = sensorData.toList()
+    val firstRow = sensorList.take(6)
+    val secondRow = sensorList.drop(6)
+    val parentHeight = if(secondRow.isEmpty()) height else height * 2 + 32.dp
+    Box(modifier = modifier.height(parentHeight)) {
+        Column {
+            Box(modifier = Modifier.fillMaxWidth().height(height).background(Color.Black.copy(alpha = 0.3f))) {
+                Image(
+                    painter = painterResource(R.drawable.ic_cam),
+                    contentDescription = "CameraMode",
+                    modifier = Modifier
+                        .size(iconsSize)
+                        .align(Alignment.BottomStart)
+                        .padding(start = 10.dp, top = 3.dp, bottom = 3.dp, end = 3.dp)
+                        .clickable(onClick = { onCameraClick() })
+                )
+                Image(
+                    painter = painterResource(R.drawable.ic_chip),
+                    contentDescription = "MicroChip",
+                    modifier = Modifier
+                        .size(iconsSize)
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 7.dp)
+                        .clickable { onSettingsClick() }
+                )
+                Row(modifier = Modifier.fillMaxWidth().height(height).padding(horizontal = iconsSize + 5.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    val halfSize = (firstRow.size + 1) / 2
+                    val firstHalf = firstRow.take(halfSize)
+                    val secondHalf = firstRow.drop(halfSize)
+                    Row(modifier = Modifier.weight(1f).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+                        firstHalf.forEach { (name, value) ->
+                            SensorLandscape(modifier = Modifier, name = name, value = value)
+                        }
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxHeight(), verticalArrangement = Arrangement.SpaceEvenly) {
+                        val h1 = height * 0.3f
+                        val h2 = height * 0.28f
+                        Text(text = boardName, color = Color.White, fontSize = h1.value.sp, style = fixedTextStyle)
+                        if(isScanning && wsState != WsState.CONNECTED) {
+                            AnimatedConnectingText(fontSize = h2.value.sp)
+                        } else
+                            when(wsState) {
+                                WsState.CONNECTED -> Text(text = "Подключено", color = Color(0xFF4CAF50), fontSize = h2.value.sp, style = fixedTextStyle)
+                                WsState.CONNECTING -> AnimatedConnectingText(fontSize = h2.value.sp)
+                                WsState.CLOSED -> Text(text = "Отключено", color = Color.DarkGray.copy(0.6f), fontSize = h2.value.sp, style = fixedTextStyle)
+                                WsState.ERROR -> Text(text = "Ошибка", color = Color.Red, fontSize = h2.value.sp, style = fixedTextStyle)
+                            }
+                    }
+                    Row(modifier = Modifier.weight(1f).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+                        secondHalf.forEach { (name, value) ->
                             SensorLandscape(modifier = Modifier, name = name, value = value)
                         }
                     }
                 }
             }
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 8.dp)) {
-                Text(text = boardName, color = Color.White, fontSize = 16.sp)
-                when(wsState) {
-                    WsState.CONNECTED -> Text(text = "Подключено", color = Color(0xFF4CAF50), fontSize = 14.sp)
-                    WsState.CONNECTING -> AnimatedConnectingText(textColor = Color.White, fontSize = 14.sp)
-                    WsState.CLOSED -> Text(text = "Отключено", color = Color.LightGray, fontSize = 14.sp)
-                    WsState.ERROR -> Text(text = "Ошибка", color = Color.Red, fontSize = 14.sp)
-                }
-            }
-
-            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                val chunks = secondHalf.chunked(3)
-                chunks.forEach { chunk ->
-                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        chunk.forEach { (name, value) ->
-                            SensorLandscape(modifier = Modifier, name = name, value = value)
-                        }
+            val rowHeight = parentHeight - height
+            SlideOutControlPanel(
+                modifier = Modifier.fillMaxWidth().height(rowHeight),
+                panelSize = rowHeight - 64.dp,
+                isVertical = true,
+                side = SlideSide.RightBottom
+            ) {
+                Row(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    secondRow.forEach { (name, value) ->
+                        SensorLandscape(modifier = Modifier, name = name, value = value)
                     }
                 }
             }
@@ -397,7 +437,7 @@ fun MotorsPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>
             // три и более мотора
             SlideOutControlPanel(
                 modifier = modifier.height(h * 0.65f),
-                panelSize = w * 0.38f
+                panelSize = w * 0.4f
             ) {
                 MotorControl(
                     modifier = Modifier.fillMaxSize(),
@@ -701,7 +741,7 @@ fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device,
 @Composable
 fun AnimatedConnectingText(
     modifier: Modifier = Modifier,
-    baseText: String = "Подключение",
+    baseText: String = "Сканирование",
     fontSize: TextUnit = 16.sp,
     textColor: Color = Color.Unspecified
 ) {
@@ -734,4 +774,26 @@ fun isDifferenceMoreThan40Percent(a: Float, b: Float): Boolean {
     val percentage = ((max - min) / max) * 100
 
     return percentage > 40
+}
+
+@Composable
+fun HideSystemBarsEffect(hidden: Boolean) {
+    val view = LocalView.current
+
+    DisposableEffect(hidden) {
+        val window = (view.context as Activity).window
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        val controller = WindowCompat.getInsetsController(window, view)
+
+        if (hidden) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+
+        onDispose { }
+    }
 }

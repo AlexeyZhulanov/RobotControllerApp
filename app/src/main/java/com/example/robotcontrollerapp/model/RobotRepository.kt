@@ -6,6 +6,8 @@ import com.example.robotcontrollerapp.domain.Device
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -25,6 +27,10 @@ class RobotRepository @Inject constructor() {
     private val _wsState = MutableStateFlow(WsState.CLOSED)
     val wsState = _wsState.asStateFlow()
 
+    // Состояние сканирования
+    private val _isScanning = MutableStateFlow(false)
+    val isScanning = _isScanning.asStateFlow()
+
     // IP адрес камеры
     private val _cameraIp = MutableStateFlow<String?>(null)
     val cameraIp = _cameraIp.asStateFlow()
@@ -38,20 +44,26 @@ class RobotRepository @Inject constructor() {
     val sensorData = _sensorData.asStateFlow()
 
     // Логи
-    private val _logs = MutableStateFlow<String>("")
+    private val _logs = MutableStateFlow("")
     val logs = _logs.asStateFlow()
 
     // Информация о плате
-    private val _boardInfo = MutableStateFlow<Pair<String, String>>("" to "")
+    private val _boardInfo = MutableStateFlow("" to "")
     val boardInfo = _boardInfo.asStateFlow()
 
-    private val _boardName = MutableStateFlow<String>("")
+    private val _boardName = MutableStateFlow("")
     val boardName = _boardName.asStateFlow()
 
     // Найденные пины (для PinEditor)
     private val _detectedPins = MutableStateFlow<List<DetectedPin>>(emptyList())
     val detectedPins = _detectedPins.asStateFlow()
 
+    // Базовая защита соединения
+    private val connectMutex = Mutex()
+    private var scanInProgress = false
+
+    // Дополнительная защита соединения
+    private var connectCalled = false
 
     init {
         setupClientCallbacks()
@@ -60,6 +72,9 @@ class RobotRepository @Inject constructor() {
     private fun setupClientCallbacks() {
         // Связываем события Клиента с нашими StateFlow
         wsClient.onStateChanged = { state ->
+            if(state == WsState.CLOSED || state == WsState.ERROR) {
+                connectCalled = false
+            }
             _wsState.value = state
         }
 
@@ -97,20 +112,41 @@ class RobotRepository @Inject constructor() {
     // --- ГЛАВНАЯ ЛОГИКА ПОДКЛЮЧЕНИЯ ---
 
     suspend fun searchAndConnect() {
-        _logs.value = "Scanning network for devices..."
-        Log.d("testConnect", "Starting UDP scan...")
-
-        // Запускаем сканирование
-        scanNetworkForDevices()
-
-        if (_wsState.value != WsState.CONNECTED && _wsState.value != WsState.CONNECTING) {
-            _logs.value = "Robot not found."
-        } else {
-            _logs.value = "Scan finished."
+        connectMutex.withLock {
+            // 1) Если уже подключены/подключаемся — просто выходим
+            if (_wsState.value == WsState.CONNECTED || _wsState.value == WsState.CONNECTING) {
+                Log.d("testConnect", "Already connected/connecting, skip search.")
+                return
+            }
+            // 2) Если уже идёт скан — тоже выходим
+            if (scanInProgress) {
+                Log.d("testConnect", "Scan already in progress, skip search.")
+                return
+            }
+            scanInProgress = true
+            _isScanning.value = true
         }
 
-        if (_cameraIp.value != null) {
-            Log.d("testConnect", "Camera is ready at ${_cameraIp.value}")
+        try {
+            _logs.value = "Scanning network for devices..."
+            Log.d("testConnect", "Starting UDP scan...")
+
+            scanNetworkForDevices()
+
+            if (_wsState.value != WsState.CONNECTED && _wsState.value != WsState.CONNECTING) {
+                _logs.value = "Robot not found."
+            } else {
+                _logs.value = "Scan finished."
+            }
+
+            if (_cameraIp.value != null) {
+                Log.d("testConnect", "Camera is ready at ${_cameraIp.value}")
+            }
+        } finally {
+            connectMutex.withLock {
+                scanInProgress = false
+                _isScanning.value = false
+            }
         }
     }
 
@@ -140,7 +176,8 @@ class RobotRepository @Inject constructor() {
                         Log.d("testUDP", "Robot found IP: $ip")
 
                         // Если еще не подключены - подключаемся
-                        if (_wsState.value == WsState.CLOSED || _wsState.value == WsState.ERROR) {
+                        if (!connectCalled && (_wsState.value == WsState.CLOSED || _wsState.value == WsState.ERROR)) {
+                            connectCalled = true
                             val url = "ws://$ip:81"
                             wsClient.connect(url)
                             _logs.value = "Connecting to Robot ($ip)..."
