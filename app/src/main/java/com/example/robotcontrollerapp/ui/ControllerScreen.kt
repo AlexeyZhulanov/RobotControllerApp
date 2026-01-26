@@ -4,6 +4,13 @@ import android.app.Activity
 import android.content.res.Configuration
 import android.util.Log
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateValue
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,22 +27,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,6 +51,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -57,11 +62,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.robotcontrollerapp.R
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.model.WsState
 import com.example.robotcontrollerapp.util.fixedTextStyle
-import kotlinx.coroutines.delay
 import kotlin.collections.chunked
 import kotlin.collections.forEach
 import kotlin.math.ceil
@@ -72,41 +77,26 @@ import kotlin.math.floor
 fun ControllerScreen(
     viewModel: RobotControlViewModel = hiltViewModel(),
     onOpenPinEditor: () -> Unit
-) { // todo вернуть обратно
-    val wsState by viewModel.wsState.collectAsState()
-    val isScanning by viewModel.isScanning.collectAsState()
-    val boardInfo by viewModel.boardInfo.collectAsState()
-    val devices by viewModel.devices.collectAsState()
-    val sensorData by viewModel.sensorData.collectAsState()
-    val cameraIp by viewModel.cameraIp.collectAsState()
+) {
+    val wsState by viewModel.wsState.collectAsStateWithLifecycle()
+    val isScanning by viewModel.isScanning.collectAsStateWithLifecycle()
+    val boardInfo by viewModel.boardInfo.collectAsStateWithLifecycle()
+    val devices by viewModel.devices.collectAsStateWithLifecycle()
+    val sensorData by viewModel.sensorData.collectAsStateWithLifecycle()
+    val cameraIp by viewModel.cameraIp.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
 
-    // FAKE DATA (на время тестирования UI) TODO
-//    val wsState = WsState.CONNECTED
-//    val boardInfo = "ESP32" to "123123123"
-//    val devices = listOf(Device("button1", 1, type = "button"),
-//        Device("button2", 2, type = "button"), Device("button3", 3, type = "button"),
-//        Device("button4", 11, type = "button"), Device("button5", 12, type = "button"),
-//        Device("button6", 13, type = "button"), Device("button7", 14, type = "button"),
-//        Device("t1", 5, type = "motor"), Device("t2", 6, type = "motor"),
-//        Device("t3", 7, type = "motor"))
-//    val sensorData = mapOf("sensor_A0" to 5.32f, "sensor_A1" to 4.22f,
-//        "sensor_A2" to 5.32f, "sensor_A3" to 4.22f, "sensor_A4" to 5.32f, "sensor_A5" to 4.22f,
-//        "sensor_A6" to 5.32f, "sensor_A7" to 4.22f,
-//        "sensor_A8" to 5.32f, "sensor_A9" to 4.22f,
-//        "sensor_A10" to 5.32f, "sensor_A11" to 4.22f,
-//        "sensor_A12" to 5.32f, "sensor_A13" to 4.22f)
-        //"sensor_A2" to 5.32f, "sensor_A3" to 4.22f, "sensor_A4" to 5.32f, "sensor_A5" to 4.22f)
-    val dev = devices.filter { it.type != "sensor" && it.type != "motor" }
-    // ==================================== TODO
-    LaunchedEffect(devices) {
-        viewModel.subscribeAllSensors(devices)
+    val dev = remember(devices) {
+        devices.filter { it.type != "sensor" && it.type != "motor" }
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            viewModel.unsubscribeAllSensors(devices)
-        }
+    val sensorNames = remember(devices) {
+        devices.filter { it.type == "sensor" }.map { it.name }
+    }
+
+    DisposableEffect(sensorNames) {
+        viewModel.subscribeSensors(sensorNames)
+        onDispose { viewModel.unsubscribeSensors(sensorNames) }
     }
 
     // Получаем текущую ориентацию экрана (книжная или альбомная)
@@ -131,17 +121,17 @@ fun ControllerScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     if (showCamera) {
-                        Image(painter = painterResource(R.drawable.test),
-                            modifier = Modifier.fillMaxSize(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop)
-                        // todo вернуть
-//                        if(cameraIp != null) {
-//                            MjpegSurface(
-//                                url = "http://${cameraIp}:81", // Порт 81 как в прошивке
-//                                modifier = Modifier.fillMaxSize()
-//                            )
-//                        }
+                        if(cameraIp != null) {
+                            MjpegSurface(
+                                url = "http://${cameraIp}:81", // Порт 81 как в прошивке
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Image(painter = painterResource(R.drawable.cam_placeholder),
+                                modifier = Modifier.fillMaxSize(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop)
+                        }
                     }
                 }
 
@@ -172,7 +162,9 @@ fun ControllerScreen(
                     h = maxH,
                     w = maxW,
                     devices = devices,
-                    onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) }
+                    onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) },
+                    onSetMotorSpeedThrottled = { motor, speed -> viewModel.setMotorSpeedThrottled(motor, speed) },
+                    onSetTankSpeed = { lm, ls, rm, rs -> viewModel.setTankSpeed(lm, ls, rm, rs) }
                 )
             }
         } else {
@@ -217,7 +209,9 @@ fun ControllerScreen(
                     BottomPanel(
                         modifier = Modifier.weight(w).fillMaxWidth(),
                         devices = devices,
-                        onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) }
+                        onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) },
+                        onSetMotorSpeedThrottled = { motor, speed -> viewModel.setMotorSpeedThrottled(motor, speed) },
+                        onSetTankSpeed = { lm, ls, rm, rs -> viewModel.setTankSpeed(lm, ls, rm, rs) }
                     )
                 }
             }
@@ -254,7 +248,7 @@ fun TopBar(
             } else
             when(wsState) {
                 WsState.CONNECTED -> Text(text = "Подключено", color = Color(0xFF4CAF50), fontSize = 16.sp)
-                WsState.CONNECTING -> AnimatedConnectingText()
+                WsState.CONNECTING -> AnimatedConnectingText(baseText = "Подключение")
                 WsState.CLOSED -> Text(text = "Отключено", color = Color.DarkGray.copy(0.6f), fontSize = 16.sp)
                 WsState.ERROR -> Text(text = "Ошибка", color = Color.Red, fontSize = 16.sp)
             }
@@ -318,12 +312,12 @@ fun TopBarLandscape(
                         val h2 = height * 0.28f
                         Text(text = boardName, color = Color.White, fontSize = h1.value.sp, style = fixedTextStyle)
                         if(isScanning && wsState != WsState.CONNECTED) {
-                            AnimatedConnectingText(fontSize = h2.value.sp)
+                            AnimatedConnectingText(fontSize = h2.value.sp, textStyle = fixedTextStyle)
                         } else
                             when(wsState) {
                                 WsState.CONNECTED -> Text(text = "Подключено", color = Color(0xFF4CAF50), fontSize = h2.value.sp, style = fixedTextStyle)
-                                WsState.CONNECTING -> AnimatedConnectingText(fontSize = h2.value.sp)
-                                WsState.CLOSED -> Text(text = "Отключено", color = Color.DarkGray.copy(0.6f), fontSize = h2.value.sp, style = fixedTextStyle)
+                                WsState.CONNECTING -> AnimatedConnectingText(fontSize = h2.value.sp, baseText = "Подключение", textStyle = fixedTextStyle)
+                                WsState.CLOSED -> Text(text = "Отключено", color = Color.LightGray.copy(0.7f), fontSize = h2.value.sp, style = fixedTextStyle)
                                 WsState.ERROR -> Text(text = "Ошибка", color = Color.Red, fontSize = h2.value.sp, style = fixedTextStyle)
                             }
                     }
@@ -392,12 +386,21 @@ fun TopPanel(modifier: Modifier, sensorData: Map<String, Float>, dev: List<Devic
 }
 
 @Composable
-fun MotorsPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>, onSetMotorSpeed: (Device, Int) -> Unit) {
+fun MotorsPanelLandscape(
+    modifier: Modifier,
+    h: Dp,
+    w: Dp,
+    devices: List<Device>,
+    onSetMotorSpeed: (Device, Int) -> Unit,
+    onSetMotorSpeedThrottled: (Device, Int) -> Unit,
+    onSetTankSpeed: (leftMotor: Device, leftSpeed: Int, rightMotor: Device, rightSpeed: Int) -> Unit
+) {
     val motors = remember(devices) {
         devices.filter { it.type == "motor" }
     }
     when(motors.size) {
-        in 0..2 -> {
+        0 -> {} // нет моторов - даже не показываем панель
+        in 1..2 -> {
             SlideOutControlPanel(
                 modifier = modifier.height(h * 0.6f),
                 panelSize = w * 0.3f
@@ -411,21 +414,17 @@ fun MotorsPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>
                         isTransparent = true,
                         onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
                             when(motors.size) {
-                                0 -> {
-                                    // нет моторов — ничего не делаем
-                                }
                                 1 -> {
                                     // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
                                     val motor = motors[0]
                                     // вызываем viewModel, передаём signed speed
-                                    onSetMotorSpeed(motor, leftPwmSigned)
+                                    onSetMotorSpeedThrottled(motor, leftPwmSigned)
                                 }
                                 else -> {
                                     // два мотора - используем первые два как лев/право
                                     val leftMotor = motors[0]
                                     val rightMotor = motors[1]
-                                    onSetMotorSpeed(leftMotor, leftPwmSigned)
-                                    onSetMotorSpeed(rightMotor, rightPwmSigned)
+                                    onSetTankSpeed(leftMotor, leftPwmSigned, rightMotor, rightPwmSigned)
                                 }
                             }
                         }
@@ -460,7 +459,13 @@ fun MotorsPanelLandscape(modifier: Modifier, h: Dp, w: Dp, devices: List<Device>
 }
 
 @Composable
-fun BottomPanel(modifier: Modifier, devices: List<Device>, onSetMotorSpeed: (Device, Int) -> Unit) {
+fun BottomPanel(
+    modifier: Modifier,
+    devices: List<Device>,
+    onSetMotorSpeed: (Device, Int) -> Unit,
+    onSetMotorSpeedThrottled: (Device, Int) -> Unit,
+    onSetTankSpeed: (leftMotor: Device, leftSpeed: Int, rightMotor: Device, rightSpeed: Int) -> Unit
+) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         val motors = remember(devices) {
             devices.filter { it.type == "motor" }
@@ -482,14 +487,13 @@ fun BottomPanel(modifier: Modifier, devices: List<Device>, onSetMotorSpeed: (Dev
                                     // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
                                     val motor = motors[0]
                                     // вызываем viewModel, передаём signed speed
-                                    onSetMotorSpeed(motor, leftPwmSigned)
+                                    onSetMotorSpeedThrottled(motor, leftPwmSigned)
                                 }
                                 else -> {
                                     // два мотора - используем первые два как лев/право
                                     val leftMotor = motors[0]
                                     val rightMotor = motors[1]
-                                    onSetMotorSpeed(leftMotor, leftPwmSigned)
-                                    onSetMotorSpeed(rightMotor, rightPwmSigned)
+                                    onSetTankSpeed(leftMotor, leftPwmSigned, rightMotor, rightPwmSigned)
                                 }
                             }
                         }
@@ -532,29 +536,31 @@ fun BottomPanelLandscape(modifier: Modifier, height: Dp, width: Dp, devices: Lis
 
     val verticalSpacing = 5.dp
     val h = height * rowsCount + (verticalSpacing - 32.dp) * (rowsCount - 1)
-    SlideOutControlPanel(
-        modifier = modifier.width(width).height(h),
-        panelSize = h,
-        isVertical = true
-    ) {
-        val maxCountInRow = ceil(count / rowsCount.toFloat()).toInt()
-        val availableHeight = height - 32.dp
-        val cellWidth = availableWidth / maxCountInRow
-        val cellSize = minOf(cellWidth, availableHeight)
-        val deviceRows = devices.reversed().chunked(maxCountInRow).reversed()
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(verticalSpacing), horizontalAlignment = Alignment.CenterHorizontally) {
-            deviceRows.forEach { deviceRow ->
-                Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
-                    deviceRow.reversed().forEach { device ->
-                        key(device) {
-                            CustomButton(
-                                width = cellSize,
-                                height = cellSize,
-                                isQuad = true,
-                                isLandscape = true,
-                                device = device,
-                                onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
-                            )
+    if(devices.isNotEmpty()) {
+        SlideOutControlPanel(
+            modifier = modifier.width(width).height(h),
+            panelSize = h,
+            isVertical = true
+        ) {
+            val maxCountInRow = ceil(count / rowsCount.toFloat()).toInt()
+            val availableHeight = height - 32.dp
+            val cellWidth = availableWidth / maxCountInRow
+            val cellSize = minOf(cellWidth, availableHeight)
+            val deviceRows = devices.reversed().chunked(maxCountInRow).reversed()
+            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(verticalSpacing), horizontalAlignment = Alignment.CenterHorizontally) {
+                deviceRows.forEach { deviceRow ->
+                    Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
+                        deviceRow.reversed().forEach { device ->
+                            key(device.name) {
+                                CustomButton(
+                                    width = cellSize,
+                                    height = cellSize,
+                                    isQuad = true,
+                                    isLandscape = true,
+                                    device = device,
+                                    onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
+                                )
+                            }
                         }
                     }
                 }
@@ -627,7 +633,7 @@ fun CustomButtons(modifier: Modifier, rowCount: Int, devices: List<Device>, onDe
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
                     rowDevices.forEach { device ->
-                        key(device) {
+                        key(device.name) {
                             CustomButton(
                                 width = cellWidth,
                                 height = cellHeight,
@@ -687,7 +693,7 @@ fun SensorLandscape(modifier: Modifier, name: String, value: Float) {
 @Composable
 fun CustomButton(width: Dp, height: Dp, isQuad: Boolean, device: Device,
                  isLandscape: Boolean = false, onDeviceToggle: (Device, Boolean) -> Unit) {
-    var isOn by remember { mutableStateOf(device.state) }
+    var isOn by remember(device.state) { mutableStateOf(device.state) }
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -743,23 +749,29 @@ fun AnimatedConnectingText(
     modifier: Modifier = Modifier,
     baseText: String = "Сканирование",
     fontSize: TextUnit = 16.sp,
-    textColor: Color = Color.Unspecified
+    textColor: Color = Color.Unspecified,
+    textStyle: TextStyle = LocalTextStyle.current
 ) {
-    var dotCount by remember { mutableIntStateOf(1) }
+    val transition = rememberInfiniteTransition(label = "dotsTransition")
 
-    // Этот эффект будет запускаться один раз и работать, пока компонент на экране
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(500) // Пауза в полсекунды
-            dotCount = (dotCount % 3) + 1 // Циклично меняем количество точек: 1 -> 2 -> 3 -> 1
-        }
-    }
+    // 0..3, меняется каждые 500мс
+    val step by transition.animateValue(
+        initialValue = 1,
+        targetValue = 4,
+        typeConverter = Int.VectorConverter,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "dotCount"
+    )
 
     Text(
-        text = "$baseText${".".repeat(dotCount)}",
+        text = "$baseText${".".repeat(step)}",
         modifier = modifier,
         fontSize = fontSize,
-        color = textColor
+        color = textColor,
+        style = textStyle
     )
 }
 

@@ -5,9 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.model.RobotRepository
-import com.example.robotcontrollerapp.model.WsState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -22,26 +20,17 @@ class PinEditorViewModel @Inject constructor(
     private val _devices = MutableStateFlow<List<Device>>(emptyList())
     val devices = _devices.asStateFlow()
 
-    val detectedPins = repository.detectedPins
     val boardName = repository.boardName
 
     private val _errorFlow = MutableSharedFlow<String>()
     val errorFlow = _errorFlow.asSharedFlow()
 
     init {
+        repository.startAutoConnect()
+
         viewModelScope.launch {
-            // Если еще не подключены - ищем, если подключены - просто работаем
             repository.devices.collect { repoDevices ->
                 _devices.value = repoDevices
-            }
-            while(true) {
-                val state = repository.wsState.value
-                if(state != WsState.CONNECTED && state != WsState.CONNECTING) {
-                    repository.searchAndConnect()
-                    repository.requestDetectedPins()
-                    repository.requestDevices()
-                }
-                delay(5000)
             }
         }
     }

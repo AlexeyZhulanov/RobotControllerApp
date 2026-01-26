@@ -1,20 +1,14 @@
 package com.example.robotcontrollerapp.ui
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.model.RobotRepository
-import com.example.robotcontrollerapp.model.WsState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -43,16 +37,7 @@ class RobotControlViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     init {
-        viewModelScope.launch {
-            while(true) {
-                val state = repository.wsState.value
-                if(state != WsState.CONNECTED && state != WsState.CONNECTING) {
-                    repository.searchAndConnect()
-                    refreshDevices()
-                }
-                delay(5000)
-            }
-        }
+        repository.startAutoConnect()
     }
 
 
@@ -64,6 +49,14 @@ class RobotControlViewModel @Inject constructor(
         repository.setMotorSpeed(device.name, speed)
     }
 
+    fun setMotorSpeedThrottled(device: Device, speed: Int) {
+        repository.setMotorSpeedThrottled(device.name, speed)
+    }
+
+    fun setTankSpeed(left: Device, leftSpeed: Int, right: Device, rightSpeed: Int) {
+        repository.setTankSpeed(left.name, leftSpeed, right.name, rightSpeed)
+    }
+
     fun subscribeSensor(name: String) {
         repository.subscribeSensor(name)
     }
@@ -72,23 +65,15 @@ class RobotControlViewModel @Inject constructor(
         repository.unsubscribeSensor(name)
     }
 
-    fun refreshDevices() {
-        repository.requestDevices()
-    }
-
     fun refreshBoardStatus() {
         repository.requestBoardStatus()
     }
 
-    fun subscribeAllSensors(devices: List<Device>) {
-        devices
-            .filter { it.type == "sensor" }
-            .forEach { d -> repository.subscribeSensor(d.name) }
+    fun subscribeSensors(names: List<String>) {
+        names.forEach { name -> repository.subscribeSensor(name) }
     }
 
-    fun unsubscribeAllSensors(devices: List<Device>) {
-        devices
-            .filter { it.type == "sensor" }
-            .forEach { d -> repository.unsubscribeSensor(d.name) }
+    fun unsubscribeSensors(names: List<String>) {
+        names.forEach { name -> repository.unsubscribeSensor(name) }
     }
 }

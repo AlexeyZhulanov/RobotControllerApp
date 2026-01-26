@@ -1,5 +1,6 @@
 package com.example.robotcontrollerapp.ui
 
+import android.annotation.SuppressLint
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -41,7 +42,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,21 +53,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.robotcontrollerapp.R
 import com.example.robotcontrollerapp.domain.Device
 import kotlinx.coroutines.launch
 
 private enum class ConfigTab { Local, Remote }
 
+@SuppressLint("MutableCollectionMutableState")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PinEditorScreen(
     viewModel: PinEditorViewModel = hiltViewModel(),
-    onBack: () -> Unit // todo не используется
+    onBack: () -> Unit
 ) {
-    val devices by viewModel.devices.collectAsState()
-    val boardName by viewModel.boardName.collectAsState()
-    val detectedPins by viewModel.detectedPins.collectAsState()
+    val devices by viewModel.devices.collectAsStateWithLifecycle()
+    val boardName by viewModel.boardName.collectAsStateWithLifecycle()
 
     var assigned by remember { mutableStateOf(mutableMapOf<Int, Device>()) }
 
@@ -113,10 +114,6 @@ fun PinEditorScreen(
             }
         }.toMutableMap()
     }
-
-    val unassignedDetected = detectedPins.filterNot { detected ->
-        assigned.keys.contains(detected.pin)
-    }.map { it.pin }.toSet()
 
     // Slave-устройства - те, у которых нет локального пина
     val remoteDevices = remember(devices) {
@@ -243,7 +240,6 @@ fun PinEditorScreen(
                                 modifier = Modifier.fillMaxHeight(fraction = 0.8f),
                                 boardStyle = BoardStyle(pinSize = 24.dp, pinOverlap = 10.dp),
                                 devices = devices,
-                                detectedPins = unassignedDetected,
                                 onPinClicked = { pin ->
                                     selectedPin = pin.number
                                     showConfigDialog = true

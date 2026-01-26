@@ -1,11 +1,15 @@
 package com.example.robotcontrollerapp.model
 
 import android.util.Log
-import com.example.robotcontrollerapp.domain.DetectedPin
 import com.example.robotcontrollerapp.domain.Device
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -54,16 +58,17 @@ class RobotRepository @Inject constructor() {
     private val _boardName = MutableStateFlow("")
     val boardName = _boardName.asStateFlow()
 
-    // Найденные пины (для PinEditor)
-    private val _detectedPins = MutableStateFlow<List<DetectedPin>>(emptyList())
-    val detectedPins = _detectedPins.asStateFlow()
-
     // Базовая защита соединения
     private val connectMutex = Mutex()
     private var scanInProgress = false
 
-    // Дополнительная защита соединения
-    private var connectCalled = false
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var autoConnectStarted = false
+
+    private var autoConnectJob: Job? = null
+
 
     init {
         setupClientCallbacks()
@@ -72,9 +77,6 @@ class RobotRepository @Inject constructor() {
     private fun setupClientCallbacks() {
         // Связываем события Клиента с нашими StateFlow
         wsClient.onStateChanged = { state ->
-            if(state == WsState.CLOSED || state == WsState.ERROR) {
-                connectCalled = false
-            }
             _wsState.value = state
         }
 
@@ -100,9 +102,6 @@ class RobotRepository @Inject constructor() {
             _boardName.value = board
         }
 
-        wsClient.onDetectedPins = { pins ->
-            _detectedPins.value = pins
-        }
 
         wsClient.onDeviceAdded = { name, pin, type ->
             _devices.value = _devices.value + Device(name, pin, type = type)
@@ -110,6 +109,31 @@ class RobotRepository @Inject constructor() {
     }
 
     // --- ГЛАВНАЯ ЛОГИКА ПОДКЛЮЧЕНИЯ ---
+    fun startAutoConnect() {
+        if (autoConnectStarted) return
+        autoConnectStarted = true
+
+        autoConnectJob = repoScope.launch {
+            var prevState: WsState? = null
+
+            while (true) {
+                val state = wsState.value
+
+                // 1) Если не подключены — пытаемся найти и подключиться
+                if (state != WsState.CONNECTED && state != WsState.CONNECTING) {
+                    searchAndConnect()
+                }
+
+                // 2) Если ТОЛЬКО ЧТО подключились — один раз запросить устройства
+                if (state == WsState.CONNECTED && prevState != WsState.CONNECTED) {
+                    requestDevices()
+                }
+
+                prevState = state
+                delay(5000)
+            }
+        }
+    }
 
     suspend fun searchAndConnect() {
         connectMutex.withLock {
@@ -176,8 +200,7 @@ class RobotRepository @Inject constructor() {
                         Log.d("testUDP", "Robot found IP: $ip")
 
                         // Если еще не подключены - подключаемся
-                        if (!connectCalled && (_wsState.value == WsState.CLOSED || _wsState.value == WsState.ERROR)) {
-                            connectCalled = true
+                        if (_wsState.value != WsState.CONNECTED && _wsState.value != WsState.CONNECTING) {
                             val url = "ws://$ip:81"
                             wsClient.connect(url)
                             _logs.value = "Connecting to Robot ($ip)..."
@@ -215,8 +238,10 @@ class RobotRepository @Inject constructor() {
 
     // --- ПРОКСИ-МЕТОДЫ (Пробрасываем команды в клиент) ---
     fun requestDevices() = wsClient.requestDevices()
-    fun requestDetectedPins() = wsClient.requestDetectedPins()
     fun setMotorSpeed(name: String, speed: Int) = wsClient.setMotorSpeed(name, speed)
+    fun setMotorSpeedThrottled(name: String, speed: Int) = wsClient.setMotorSpeedThrottled(name, speed)
+    fun setTankSpeed(leftName: String, leftSpeed: Int, rightName: String, rightSpeed: Int) =
+        wsClient.setTankSpeedsThrottled(leftName, leftSpeed, rightName, rightSpeed)
     fun setDeviceState(name: String, state: Boolean) = wsClient.setDeviceState(name, state)
     fun subscribeSensor(name: String) = wsClient.subscribeSensor(name)
     fun unsubscribeSensor(name: String) = wsClient.unsubscribeSensor(name)

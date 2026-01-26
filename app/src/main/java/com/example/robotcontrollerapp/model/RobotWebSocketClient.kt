@@ -1,7 +1,6 @@
 package com.example.robotcontrollerapp.model
 
 import android.util.Log
-import com.example.robotcontrollerapp.domain.DetectedPin
 import com.example.robotcontrollerapp.domain.Device
 import com.example.robotcontrollerapp.util.gpioToD
 import org.java_websocket.client.WebSocketClient
@@ -10,16 +9,61 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 import java.util.concurrent.Executors
-import kotlin.concurrent.thread
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
+import kotlin.math.min
 
 enum class WsState { CONNECTING, CONNECTED, CLOSED, ERROR }
 
 class RobotWebSocketClient(
-    private val maxBackoffMs: Long = 30000L
+    private val maxBackoffMs: Long = 30000L,
+    private val motorSendRateHz: Int = 30,           // 30 пакетов/сек
+    private val motorDeadzone: Int = 4,              // дрожание джойстика игнорим +/-4
+    private val motorMinDeltaToSend: Int = 4,        // не шлём если изменение меньше 4
+    private val heartbeatIntervalMs: Long = 3_000L,  // каждые 3 сек делаем ping
+    private val heartbeatTimeoutMs: Long = 7_000L    // если 7 сек нет входящих — реконнект
 ) {
-    private var targetUrl: String = ""
-    private var client: WebSocketClient? = null
-    private val exec = Executors.newSingleThreadExecutor()
+    @Volatile private var targetUrl: String = ""
+    private val clientRef = AtomicReference<WebSocketClient?>(null)
+
+    // только для connect/reconnect логики
+    private val connectExec = Executors.newSingleThreadExecutor()
+    // только для send (чтобы отправка не блокировалась реконнектом)
+    private val sendExec = Executors.newSingleThreadExecutor()
+
+    // Таймер реконнекта
+    private val scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
+
+    @Volatile private var reconnectJob: ScheduledFuture<*>? = null
+
+    // Heartbeat job
+    @Volatile private var heartbeatJob: ScheduledFuture<*>? = null
+    private val lastRxMillis = AtomicLong(0L)
+
+    // Антиспам для одного мотора
+    private data class MotorState(val name: String, val speed: Int)
+
+    private val pendingMotorSingle = AtomicReference<MotorState?>(null)
+    private val lastMotorSingleSent = AtomicReference<MotorState?>(null)
+
+    @Volatile private var motorSingleSenderJob: ScheduledFuture<*>? = null
+
+    // Антиспам для двух моторов
+    private data class TankState(
+        val leftName: String,
+        val leftSpeed: Int,
+        val rightName: String,
+        val rightSpeed: Int
+    )
+
+    private val pendingTank = AtomicReference<TankState?>(null)
+    private val lastTankSent = AtomicReference<TankState?>(null)
+
+    @Volatile private var motorSenderJob: ScheduledFuture<*>? = null
 
     // Callbacks
     var onMessageReceived: ((String) -> Unit)? = null
@@ -31,7 +75,6 @@ class RobotWebSocketClient(
     var onDeviceStateChanged: ((String, Boolean) -> Unit)? = null
     var onBoardInfo: ((String, String) -> Unit)? = null // boardName, chipId
     var onDevicesList: ((List<Device>) -> Unit)? = null
-    var onDetectedPins: ((List<DetectedPin>) -> Unit)? = null
     var onStatus: ((Long, Int) -> Unit)? = null
     var onSpeedChanged: ((String, Int) -> Unit)? = null
     var onDeviceAdded: ((String, Int, String) -> Unit)? = null
@@ -39,8 +82,7 @@ class RobotWebSocketClient(
     var onRawMessage: ((String) -> Unit)? = null
 
 
-    @Volatile
-    private var shouldReconnect = true
+    @Volatile private var shouldReconnect = true
 
     @Volatile
     private var state: WsState = WsState.CLOSED
@@ -49,105 +91,321 @@ class RobotWebSocketClient(
             onStateChanged?.invoke(value)
         }
 
+    // Счётчик попыток реконнекта
+    @Volatile private var attempt = 0
+
     @Synchronized
     fun connect(url: String) {
         if (state == WsState.CONNECTED || state == WsState.CONNECTING) {
             log("connect() ignored: already $state")
             return
         }
-        this.targetUrl = url
+        targetUrl = url
         shouldReconnect = true
-        exec.execute { internalConnectWithBackoff() }
+        attempt = 0
+
+        connectExec.execute {
+            cancelReconnectJob()
+            doConnect()
+        }
     }
 
-    private fun internalConnectWithBackoff() {
-        var attempt = 0
-        while (shouldReconnect) {
-            try {
-                state = WsState.CONNECTING
-                log("Connecting to $targetUrl ... (attempt ${attempt + 1})")
+    private fun doConnect() {
+        if (!shouldReconnect) return
 
-                client = object : WebSocketClient(URI(targetUrl)) {
-                    override fun onOpen(handshakedata: ServerHandshake?) {
-                        log("WebSocket opened")
-                        state = WsState.CONNECTED
-                        attempt = 0
-                    }
+        state = WsState.CONNECTING
+        log("Connecting to $targetUrl ... (attempt ${attempt + 1})")
 
-                    override fun onMessage(message: String?) {
-                        if (message == null) return
-                        onMessageReceived?.invoke(message)
-                        try {
-                            handleJsonMessage(message)
-                        } catch (e: Exception) {
-                            log("Parse error: ${e.message}")
-                        }
-                    }
+        val wsClient = object : WebSocketClient(URI(targetUrl)) {
 
-                    override fun onClose(code: Int, reason: String?, remote: Boolean) {
-                        log("WebSocket closed: $reason")
-                        state = WsState.CLOSED
-                    }
+            override fun onOpen(handshakedata: ServerHandshake?) {
+                log("WebSocket opened")
+                state = WsState.CONNECTED
+                attempt = 0
 
-                    override fun onError(ex: Exception?) {
-                        log("WebSocket error: ${ex?.message}")
-                        state = WsState.ERROR
-                    }
-                }
+                lastRxMillis.set(System.currentTimeMillis())
 
-                client?.connectBlocking()
-            } catch (e: Exception) {
-                log("Connect exception: ${e.message}")
-                state = WsState.ERROR
+                startHeartbeat()
+                startMotorSender()
+                startSingleMotorSender()
             }
 
-            if (shouldReconnect && state != WsState.CONNECTED) {
-                attempt++
-                val backoff = calculateBackoff(attempt)
-                log("Reconnect in ${backoff}ms")
+            override fun onMessage(message: String?) {
+                if (message == null) return
 
+                lastRxMillis.set(System.currentTimeMillis())
+
+                onMessageReceived?.invoke(message)
                 try {
-                    Thread.sleep(backoff)
-                } catch (_: InterruptedException) {
-                    break
+                    handleJsonMessage(message)
+                } catch (e: Exception) {
+                    log("Parse error: ${e.message}")
                 }
-            } else {
-                if (!shouldReconnect) break
-                while (shouldReconnect && state == WsState.CONNECTED) {
-                    try {
-                        Thread.sleep(500)
-                    } catch (_: InterruptedException) {
-                        break
-                    }
-                }
+            }
+
+            override fun onClose(code: Int, reason: String?, remote: Boolean) {
+                log("WebSocket closed: code=$code reason=$reason remote=$remote")
+                state = WsState.CLOSED
+
+                stopHeartbeat()
+                stopMotorSender()
+                stopSingleMotorSender()
+                scheduleReconnectIfNeeded()
+            }
+
+            override fun onError(ex: Exception?) {
+                log("WebSocket error: ${ex?.message}")
+                state = WsState.ERROR
+
+                stopHeartbeat()
+                stopMotorSender()
+                stopSingleMotorSender()
+                scheduleReconnectIfNeeded()
             }
         }
-        log("Reconnect loop stopped")
+
+        clientRef.set(wsClient)
+
+        try {
+            wsClient.connect()
+        } catch (e: Exception) {
+            log("Connect exception: ${e.message}")
+            state = WsState.ERROR
+            scheduleReconnectIfNeeded()
+        }
+    }
+
+    private fun scheduleReconnectIfNeeded() {
+        if (!shouldReconnect) return
+        if (state == WsState.CONNECTED || state == WsState.CONNECTING) return
+
+        attempt++
+        val backoff = calculateBackoff(attempt)
+        log("Reconnect scheduled in ${backoff}ms")
+
+        cancelReconnectJob()
+        reconnectJob = scheduler.schedule({
+            connectExec.execute {
+                // на момент таймера могло уже подключиться — ещё раз проверим
+                if (!shouldReconnect) return@execute
+                if (state == WsState.CONNECTED || state == WsState.CONNECTING) return@execute
+                doConnect()
+            }
+        }, backoff, TimeUnit.MILLISECONDS)
+    }
+
+    private fun cancelReconnectJob() {
+        reconnectJob?.cancel(true)
+        reconnectJob = null
     }
 
     private fun calculateBackoff(attempt: Int): Long {
         val base = 500L
-        var backoff = base * (1L shl (attempt.coerceAtMost(6)))
-        if (backoff > maxBackoffMs) backoff = maxBackoffMs
+        val exp = (1L shl min(attempt, 6))
+        val backoff = min(base * exp, maxBackoffMs)
         val jitter = (0..500).random()
         return backoff + jitter
     }
 
     fun close() {
         shouldReconnect = false
+        cancelReconnectJob()
+
+        stopHeartbeat()
+        stopMotorSender()
+
+        state = WsState.CLOSED
         try {
-            client?.close()
+            clientRef.getAndSet(null)?.close()
         } catch (e: Exception) {
             log("Close error: ${e.message}")
         }
-        client = null
     }
 
-    fun forceReconnect() {
-        try { client?.close() } catch (_: Exception) {}
+    private fun forceReconnectFromHeartbeat() {
+        if (!shouldReconnect) return
+
+        // важно: меняем состояние сразу, чтобы UI и логика перестали считать соединение живым
+        state = WsState.ERROR
+
+        try { clientRef.get()?.close() } catch (_: Exception) {}
+
+        // Если onClose/onError не придёт — всё равно планируем реконнект сами
+        scheduleReconnectIfNeeded()
     }
 
-    private fun log(msg: String) = onLog?.invoke(msg)
+    private fun log(msg: String) {
+        Log.d("testWSClient", msg)
+        onLog?.invoke(msg)
+    }
+
+    // ================= Heartbeat =================
+    private fun startHeartbeat() {
+        stopHeartbeat()
+        if (heartbeatIntervalMs <= 0) return
+
+        heartbeatJob = scheduler.scheduleWithFixedDelay({
+            if (state != WsState.CONNECTED) return@scheduleWithFixedDelay
+
+            val now = System.currentTimeMillis()
+            val silent = now - lastRxMillis.get()
+
+            if (silent > heartbeatTimeoutMs) {
+                log("Heartbeat timeout: no RX for ${silent}ms -> forceReconnect()")
+                forceReconnectFromHeartbeat()
+                return@scheduleWithFixedDelay
+            }
+
+            send(buildJson("get_status"))
+        }, heartbeatIntervalMs, heartbeatIntervalMs, TimeUnit.MILLISECONDS)
+
+        log("Heartbeat started: interval=$heartbeatIntervalMs timeout=$heartbeatTimeoutMs")
+    }
+
+    private fun stopHeartbeat() {
+        heartbeatJob?.cancel(true)
+        heartbeatJob = null
+    }
+
+    // ================= Motor spam control =================
+    private fun startMotorSender() {
+        stopMotorSender()
+        if (motorSendRateHz <= 0) return
+
+        val delayMs = (1000L / motorSendRateHz).coerceAtLeast(10L)
+
+        motorSenderJob = scheduler.scheduleWithFixedDelay({
+            if (state != WsState.CONNECTED) return@scheduleWithFixedDelay
+
+            val m = pendingTank.get() ?: return@scheduleWithFixedDelay
+            val last = lastTankSent.get()
+
+            fun deltaOk(a: Int, b: Int): Boolean = abs(a - b) >= motorMinDeltaToSend
+
+            // Если обе скорости практически не изменились — не шлём
+            if (last != null &&
+                last.leftName == m.leftName &&
+                last.rightName == m.rightName &&
+                !deltaOk(m.leftSpeed, last.leftSpeed) &&
+                !deltaOk(m.rightSpeed, last.rightSpeed)
+            ) {
+                return@scheduleWithFixedDelay
+            }
+
+            // Отправляем ЛЕВЫЙ
+            send(buildJson(
+                "action",
+                "device" to m.leftName,
+                "action" to "set_speed",
+                "value" to m.leftSpeed
+            ))
+
+            // Отправляем ПРАВЫЙ
+            send(buildJson(
+                "action",
+                "device" to m.rightName,
+                "action" to "set_speed",
+                "value" to m.rightSpeed
+            ))
+
+            lastTankSent.set(m)
+
+        }, 0L, delayMs, TimeUnit.MILLISECONDS)
+
+        log("Tank motor sender started: rate=${motorSendRateHz}Hz delay=${delayMs}ms")
+    }
+
+    private fun stopMotorSender() {
+        motorSenderJob?.cancel(true)
+        motorSenderJob = null
+        pendingTank.set(null)
+        lastTankSent.set(null)
+    }
+
+    fun setTankSpeedsThrottled(
+        leftName: String,
+        leftSpeed: Int,
+        rightName: String,
+        rightSpeed: Int
+    ) {
+        fun filterSpeed(s: Int): Int {
+            val clamped = s.coerceIn(-255, 255)
+            return if (abs(clamped) <= motorDeadzone) 0 else clamped
+        }
+
+        val ls = filterSpeed(leftSpeed)
+        val rs = filterSpeed(rightSpeed)
+
+        pendingTank.set(
+            TankState(
+                leftName = leftName,
+                leftSpeed = ls,
+                rightName = rightName,
+                rightSpeed = rs
+            )
+        )
+    }
+
+    fun setMotorSpeedThrottled(name: String, speed: Int) {
+        val s = speed.coerceIn(-255, 255)
+        val filtered = if (abs(s) <= motorDeadzone) 0 else s
+        pendingMotorSingle.set(MotorState(name, filtered))
+    }
+
+    private fun startSingleMotorSender() {
+        stopSingleMotorSender()
+        if (motorSendRateHz <= 0) return
+
+        val delayMs = (1000L / motorSendRateHz).coerceAtLeast(10L)
+
+        motorSingleSenderJob = scheduler.scheduleWithFixedDelay({
+            if (state != WsState.CONNECTED) return@scheduleWithFixedDelay
+
+            val m = pendingMotorSingle.get() ?: return@scheduleWithFixedDelay
+            val last = lastMotorSingleSent.get()
+
+            if (last != null && last.name == m.name) {
+                val delta = abs(m.speed - last.speed)
+                if (delta < motorMinDeltaToSend) return@scheduleWithFixedDelay
+            }
+
+            send(buildJson(
+                "action",
+                "device" to m.name,
+                "action" to "set_speed",
+                "value" to m.speed
+            ))
+
+            lastMotorSingleSent.set(m)
+
+        }, 0L, delayMs, TimeUnit.MILLISECONDS)
+
+        log("Single motor sender started: rate=${motorSendRateHz}Hz delay=${delayMs}ms")
+    }
+
+    private fun stopSingleMotorSender() {
+        motorSingleSenderJob?.cancel(true)
+        motorSingleSenderJob = null
+        pendingMotorSingle.set(null)
+        lastMotorSingleSent.set(null)
+    }
+
+    // ================= Generic send =================
+    fun send(text: String) {
+        Log.d("testSend", text)
+        sendExec.execute {
+            try {
+                val c = clientRef.get()
+                if (c?.isOpen == true) {
+                    c.send(text)
+                } else {
+                    log("Send failed: socket not open (state=$state)")
+                }
+            } catch (e: Exception) {
+                log("Send error: ${e.message}")
+            }
+        }
+    }
 
     // ==========  Command API  ==========
 
@@ -180,8 +438,6 @@ class RobotWebSocketClient(
     /** Запросить общий статус платы (аптайм, количество устройств и т.д.) */
     fun requestBoardStatus() = send(buildJson("get_status"))
 
-    fun requestDetectedPins() = send(buildJson("get_detected_pins"))
-
     fun requestSensorsSnapshot() = send(buildJson("get_sensors"))
 
     private fun buildJson(cmd: String, vararg pairs: Pair<String, Any>): String {
@@ -198,21 +454,6 @@ class RobotWebSocketClient(
             }
         }
         return obj.toString()
-    }
-
-    fun send(text: String) {
-        Log.d("testSend", text)
-        thread {
-            try {
-                if (client?.isOpen == true) {
-                    client?.send(text)
-                } else {
-                    log("Send failed: socket not open")
-                }
-            } catch (e: Exception) {
-                log("Send error: ${e.message}")
-            }
-        }
     }
 
     // ==========  MESSAGE PARSER  ==========
@@ -291,15 +532,15 @@ class RobotWebSocketClient(
             }
 
             // device_state (single device update broadcast)
-            if (o.has("device") && o.has("state") && (o.optString("cmd") == "device_state" || o.has("device") && !o.has("devices"))) {
-                val name = o.getString("device")
+            if (o.optString("cmd") == "device_state" && o.has("state")) {
+                val name = o.optString("device", o.optString("name"))
                 val stateVal = o.opt("state")
                 val state = when (stateVal) {
                     is Boolean -> stateVal
                     is Number -> stateVal.toInt() != 0
                     else -> false
                 }
-                onDeviceStateChanged?.invoke(name, state)
+                if (name.isNotEmpty()) onDeviceStateChanged?.invoke(name, state)
                 return
             }
 
