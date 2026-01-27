@@ -75,12 +75,14 @@ class RobotWebSocketClient(
     var onDeviceStateChanged: ((String, Boolean) -> Unit)? = null
     var onBoardInfo: ((String, String) -> Unit)? = null // boardName, chipId
     var onDevicesList: ((List<Device>) -> Unit)? = null
+    var onError: ((String) -> Unit)? = null
+
+    // В приложении эти колбеки нигде не используются, но прошивка их поддерживает
     var onStatus: ((Long, Int) -> Unit)? = null
     var onSpeedChanged: ((String, Int) -> Unit)? = null
     var onDeviceAdded: ((String, Int, String) -> Unit)? = null
-    var onError: ((String) -> Unit)? = null
     var onRawMessage: ((String) -> Unit)? = null
-
+    // ===========================================================================
 
     @Volatile private var shouldReconnect = true
 

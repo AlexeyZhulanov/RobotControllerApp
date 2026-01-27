@@ -1,6 +1,5 @@
 package com.example.robotcontrollerapp.ui
 
-import android.annotation.SuppressLint
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -60,7 +59,6 @@ import kotlinx.coroutines.launch
 
 private enum class ConfigTab { Local, Remote }
 
-@SuppressLint("MutableCollectionMutableState")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PinEditorScreen(
@@ -69,8 +67,6 @@ fun PinEditorScreen(
 ) {
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val boardName by viewModel.boardName.collectAsStateWithLifecycle()
-
-    var assigned by remember { mutableStateOf(mutableMapOf<Int, Device>()) }
 
     var savedAssigned by remember { mutableStateOf<Map<Int, Device>>(emptyMap()) }
 
@@ -102,8 +98,8 @@ fun PinEditorScreen(
         }
     }
 
-    LaunchedEffect(devices) {
-        assigned = buildMap {
+    val assigned = remember(devices) {
+        buildMap {
             devices.forEach { device ->
                 put(device.pin, device)
                 // Если есть второй пин (pin2), добавляем и его.
@@ -127,14 +123,19 @@ fun PinEditorScreen(
     }
 
     val hasUnsavedChanges = remember(assigned, onSaveClicked) {
-        if(savedAssigned.isEmpty()) {
-            savedAssigned = assigned
-            false
-        } else if(onSaveClicked) {
-            onSaveClicked = false
-            savedAssigned = emptyMap()
-            false
-        } else true
+        when {
+            savedAssigned.isEmpty() -> {
+                savedAssigned = assigned
+                false
+            }
+            savedAssigned == assigned -> false
+            onSaveClicked -> {
+                onSaveClicked = false
+                savedAssigned = emptyMap()
+                false
+            }
+            else -> true
+        }
     }
 
     // Он будет активен, только если есть несохраненные изменения

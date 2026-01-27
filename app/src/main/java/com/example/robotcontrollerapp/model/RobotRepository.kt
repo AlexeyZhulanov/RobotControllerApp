@@ -101,11 +101,6 @@ class RobotRepository @Inject constructor() {
             _boardInfo.value = board to chip
             _boardName.value = board
         }
-
-
-        wsClient.onDeviceAdded = { name, pin, type ->
-            _devices.value = _devices.value + Device(name, pin, type = type)
-        }
     }
 
     // --- ГЛАВНАЯ ЛОГИКА ПОДКЛЮЧЕНИЯ ---

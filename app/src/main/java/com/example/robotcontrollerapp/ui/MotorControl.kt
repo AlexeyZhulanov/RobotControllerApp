@@ -204,7 +204,7 @@ private fun IndividualMotorControls(
                 // 1. Подпись (извлекаем пины из имени)
                 val pins = motor.name.substringAfterLast("motor_").replace("_", "/")
                 Text(
-                    text = "Мотор (${pins})",
+                    text = if(pins.length >= 5) "Мот (${pins})" else "Мотор (${pins})",
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White,
                     fontSize = if(motors.size == 3) 14.sp else 12.sp,
