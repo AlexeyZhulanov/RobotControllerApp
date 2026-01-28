@@ -40,6 +40,7 @@
 * Сверху: Статус подключения и кнопка включения камеры.
 * Центр: Сетка показателей сенсоров и кнопки управления периферией (свет, реле).
 * Снизу: Видеопоток (если включен) и панель управления моторами.
+<img width="200" height="433" alt="image" src="https://github.com/user-attachments/assets/c7ad891c-547c-4010-91ee-3de9678084b4" />
 
 **Альбомная ориентация (Landscape):**
 Предназначена для активного FPV-управления.
@@ -48,6 +49,7 @@
 * Видеопоток на заднем плане.
 * HUD-интерфейс: Показания сенсоров на полупрозрачной верхней панели.
 * Виртуальные джойстики для удобного управления двумя руками.
+<img width="433" height="200" alt="image" src="https://github.com/user-attachments/assets/b6cf33ba-01ec-44d6-9d20-20b318f31568" />
 
 ### 2. Редактор Пинов (Pin Editor)
 
@@ -56,6 +58,8 @@
 * Визуальное отображение платы (Wemos D1 Mini).
 * Поддержка локальных (ESP) и удаленных (RS485/Arduino Uno) устройств.
 * Типы устройств: `Motor`, `LED`, `Sensor`.
+<img width="200" height="433" alt="image" src="https://github.com/user-attachments/assets/d63d1841-7956-4325-bc35-21975b58024b" />
+<img width="200" height="433" alt="image" src="https://github.com/user-attachments/assets/17389073-8c4a-437e-9b2d-36c9687b312a" />
 
 ---
 
