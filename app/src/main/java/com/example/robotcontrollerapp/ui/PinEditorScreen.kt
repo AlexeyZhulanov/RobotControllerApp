@@ -8,10 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -235,41 +233,38 @@ fun PinEditorScreen(
         Box(Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 4.dp)) {
             when (selectedTab) {
                 ConfigTab.Local -> {
-                    Column(Modifier.align(Alignment.BottomCenter)) {
-                        Box(Modifier.background(Color(0xFF111111), shape = MaterialTheme.shapes.medium)) {
-                            WemosD1MiniBoard(
-                                modifier = Modifier.fillMaxHeight(fraction = 0.8f),
-                                boardStyle = BoardStyle(pinSize = 24.dp, pinOverlap = 10.dp),
-                                devices = devices,
-                                onPinClicked = { pin ->
-                                    selectedPin = pin.number
-                                    showConfigDialog = true
-                                }
-                            )
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.Center) {
-                            val items = listOf("led", "motor", "sensor")
-                            items.forEach { t ->
-                                Card(modifier = Modifier
-                                    .padding(horizontal = 3.dp)
-                                    .weight(1f)
-                                ) {
-                                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Box(Modifier.size(22.dp).background(
-                                            color = when (t) {
-                                                "led" -> Color.Yellow
-                                                "motor" -> Color.Green
-                                                "sensor" -> Color.Cyan
-                                                else -> Color.Gray
-                                            }, shape = CircleShape
-                                        ))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(t.uppercase(), style = MaterialTheme.typography.bodyMedium)
-                                    }
+                    Row(Modifier.fillMaxWidth().align(Alignment.BottomCenter), horizontalArrangement = Arrangement.Center) {
+                        val items = listOf("led", "motor", "sensor")
+                        items.forEach { t ->
+                            Card(modifier = Modifier
+                                .padding(horizontal = 3.dp)
+                                .weight(1f)
+                            ) {
+                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(22.dp).background(
+                                        color = when (t) {
+                                            "led" -> Color.Yellow
+                                            "motor" -> Color.Green
+                                            "sensor" -> Color.Cyan
+                                            else -> Color.Gray
+                                        }, shape = CircleShape
+                                    ))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(t.uppercase(), style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
                         }
+                    }
+                    Box(Modifier.padding(top = 10.dp, bottom = 44.dp).background(Color(0xFF111111), shape = MaterialTheme.shapes.medium)) {
+                        WemosD1MiniBoard(
+                            modifier = Modifier,
+                            boardStyle = BoardStyle(pinSize = 24.dp, pinOverlap = 10.dp),
+                            devices = devices,
+                            onPinClicked = { pin ->
+                                selectedPin = pin.number
+                                showConfigDialog = true
+                            }
+                        )
                     }
                 }
                 ConfigTab.Remote -> {
