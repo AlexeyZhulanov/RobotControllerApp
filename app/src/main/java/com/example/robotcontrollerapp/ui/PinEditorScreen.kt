@@ -1,7 +1,10 @@
 package com.example.robotcontrollerapp.ui
 
+import android.annotation.SuppressLint
+import android.content.pm.ActivityInfo
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +41,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,12 +61,28 @@ import kotlinx.coroutines.launch
 
 private enum class ConfigTab { Local, Remote }
 
+@SuppressLint("SourceLockedOrientationActivity")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PinEditorScreen(
     viewModel: PinEditorViewModel = hiltViewModel(),
     onBack: () -> Unit
 ) {
+    val activity = LocalActivity.current
+
+    // Блокировка ориентации для этого composable, т.к. альбомную ориентацию сложно здесь придумать
+    DisposableEffect(Unit) {
+        if (activity == null) return@DisposableEffect onDispose {}
+
+        val oldOrientation = activity.requestedOrientation
+
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+
+        onDispose {
+            activity.requestedOrientation = oldOrientation
+        }
+    }
+
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val boardName by viewModel.boardName.collectAsStateWithLifecycle()
 

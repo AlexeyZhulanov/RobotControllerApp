@@ -59,8 +59,6 @@ dependencies {
     ksp(libs.jetbrains.metadata.jwm)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.navigation.compose)
-    implementation(libs.okhttp)
-    implementation(libs.jmdns)
     implementation(libs.java.socket)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
