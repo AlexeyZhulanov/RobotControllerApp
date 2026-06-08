@@ -38,12 +38,12 @@ class PinEditorViewModel @Inject constructor(
     fun onDeviceSelected(device: Device) {
         val names = _devices.value.map { it.name }.toSet()
         if(device.name !in names) {
-            _devices.value = _devices.value + device
+            _devices.value += device
         } else showError("Ошибка: Такое имя уже занято")
     }
 
     fun onDeviceRemoved(device: Device) {
-        _devices.value = _devices.value - device
+        _devices.value -= device
     }
 
     fun saveConfig(devices: List<Device>) {
