@@ -68,6 +68,7 @@ fun MotorControl(
     motors: List<Device>, // Передаём отфильтрованный список моторов
     isNeedBackground: Boolean = false,
     isNeedFixPadding: Boolean = false,
+    speedLimit: Float = 255f,
     onCommand: (name: String, speed: Int) -> Unit
 ) {
     var controlMode by remember { mutableStateOf(ControlMode.Individual) }
@@ -122,6 +123,7 @@ fun MotorControl(
                     motors = motors,
                     sliderValues = sliderValues,
                     isNeedBackground = isNeedBackground,
+                    speedLimit = speedLimit,
                     onValueChange = { motorName, newValue ->
                         sliderValues[motorName] = newValue
                     },
@@ -134,6 +136,7 @@ fun MotorControl(
                     collectiveSpeed = collectiveSpeed,
                     collectiveDirection = collectiveDirection,
                     isNeedBackground = isNeedBackground,
+                    speedLimit = speedLimit,
                     onDirectionChange = { newDirection ->
                         collectiveDirection = newDirection
                         // Немедленно отправляем команду при смене направления
@@ -161,6 +164,7 @@ private fun IndividualMotorControls(
     motors: List<Device>,
     sliderValues: Map<String, Float>,
     isNeedBackground: Boolean,
+    speedLimit: Float,
     onValueChange: (motorName: String, newValue: Float) -> Unit,
     onValueChangeFinished: (motorName: String) -> Unit
 ) {
@@ -192,7 +196,7 @@ private fun IndividualMotorControls(
             ) {
                 val sliderValue = sliderValues[motor.name] ?: 0f
                 // Вычисляем "силу" (от 0.0 до 1.0)
-                val fraction = (abs(sliderValue) / 255f).coerceIn(0f, 1f)
+                val fraction = (abs(sliderValue) / speedLimit).coerceIn(0f, 1f)
                 // Определяем наши цвета
                 val dullColor = if(isNeedBackground) Color(0xFFF0F0F0) else Color.DarkGray.copy(alpha = 0.7f) // Тусклый серый в центре
                 val positiveColor = Color.Blue   // Яркий синий (для +)
@@ -215,8 +219,8 @@ private fun IndividualMotorControls(
                     value = sliderValues[motor.name] ?: 0f,
                     onValueChange = { newValue -> onValueChange(motor.name, newValue) },
                     onValueChangeFinished = { onValueChangeFinished(motor.name) },
-                    valueRange = -255f..255f,
-                    steps = 510,
+                    valueRange = -speedLimit..speedLimit,
+                    steps = (speedLimit * 2).toInt(),
                     colors = SliderDefaults.colors(
                         thumbColor = dynamicColor, // Бегунок
                         activeTrackColor = dynamicColor, // "Активная" часть дорожки
@@ -244,6 +248,7 @@ private fun CollectiveMotorControls(
     collectiveSpeed: Float,
     collectiveDirection: Int,
     isNeedBackground: Boolean,
+    speedLimit: Float,
     onDirectionChange: (Int) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onSpeedChangeFinished: () -> Unit
@@ -287,7 +292,7 @@ private fun CollectiveMotorControls(
 
             Spacer(Modifier.height(spacerHeight))
 
-            val fraction = (collectiveSpeed / 255f).coerceIn(0f, 1f)
+            val fraction = (collectiveSpeed / speedLimit).coerceIn(0f, 1f)
             val dullColor = if(isNeedBackground) Color(0xFFF0F0F0) else Color.DarkGray.copy(alpha = 0.7f) // Тусклый серый в начале
             val targetColor = if(collectiveDirection == 1) Color.Blue else Color.Red
             // "Смешиваем" тусклый цвет с нашим целевым цветом
@@ -304,8 +309,8 @@ private fun CollectiveMotorControls(
                 value = collectiveSpeed,
                 onValueChange = onSpeedChange,
                 onValueChangeFinished = onSpeedChangeFinished,
-                valueRange = 0f..255f,
-                steps = 254,
+                valueRange = 0f..speedLimit,
+                steps = (speedLimit - 1).toInt(),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 colors = SliderDefaults.colors(
                     thumbColor = dynamicColor, // Бегунок
@@ -326,12 +331,17 @@ fun VerticalSlider(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    snapThreshold: Float = 10f,
     /*@IntRange(from = 0)*/
     steps: Int = 0,
     onValueChangeFinished: (() -> Unit)? = null,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     colors: SliderColors = SliderDefaults.colors()
 ){
+    val centerValue = remember(valueRange) {
+        valueRange.start + (valueRange.endInclusive - valueRange.start) / 2f
+    }
+
     Slider(
         colors = colors,
         interactionSource = interactionSource,
@@ -340,7 +350,14 @@ fun VerticalSlider(
         valueRange = valueRange,
         enabled = enabled,
         value = value,
-        onValueChange = onValueChange,
+        onValueChange = { newValue ->
+            val finalValue = if (snapThreshold > 0f && abs(newValue - centerValue) <= snapThreshold) {
+                centerValue
+            } else {
+                newValue
+            }
+            onValueChange(finalValue)
+        },
         modifier = Modifier
             .graphicsLayer {
                 rotationZ = 270f

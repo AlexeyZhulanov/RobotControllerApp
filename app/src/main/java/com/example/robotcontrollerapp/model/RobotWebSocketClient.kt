@@ -282,32 +282,34 @@ class RobotWebSocketClient(
             val m = pendingTank.get() ?: return@scheduleWithFixedDelay
             val last = lastTankSent.get()
 
-            fun deltaOk(a: Int, b: Int): Boolean = abs(a - b) >= motorMinDeltaToSend
+            // Вспомогательная функция для проверки, нужно ли затроттлить конкретный мотор
+            fun shouldThrottleMotor(currentSpeed: Int, lastSpeed: Int): Boolean {
+                // ПРАВИЛО ОСТАНОВКИ: если сейчас нужно остановиться (0),
+                // а прошлый раз мы отправляли движение (!= 0) — троттлить НЕЛЬЗЯ.
+                if (currentSpeed == 0 && lastSpeed != 0) return false
 
-            // Если обе скорости практически не изменились — не шлём
+                // В остальных случаях проверяем стандартную дельту
+                return abs(currentSpeed - lastSpeed) < motorMinDeltaToSend
+            }
+
+            // Блокируем отправку только если оба мотора удовлетворяют условиям троттлинга
             if (last != null &&
                 last.leftName == m.leftName &&
                 last.rightName == m.rightName &&
-                !deltaOk(m.leftSpeed, last.leftSpeed) &&
-                !deltaOk(m.rightSpeed, last.rightSpeed)
+                shouldThrottleMotor(m.leftSpeed, last.leftSpeed) &&
+                shouldThrottleMotor(m.rightSpeed, last.rightSpeed)
             ) {
                 return@scheduleWithFixedDelay
             }
 
-            // Отправляем ЛЕВЫЙ
+            // Отправляем оба мотора одновременно
             send(buildJson(
                 "action",
-                "device" to m.leftName,
-                "action" to "set_speed",
-                "value" to m.leftSpeed
-            ))
-
-            // Отправляем ПРАВЫЙ
-            send(buildJson(
-                "action",
-                "device" to m.rightName,
-                "action" to "set_speed",
-                "value" to m.rightSpeed
+                "action" to "set_tank_speed",
+                "left_device" to m.leftName,
+                "left_value" to m.leftSpeed,
+                "right_device" to m.rightName,
+                "right_value" to m.rightSpeed
             ))
 
             lastTankSent.set(m)
