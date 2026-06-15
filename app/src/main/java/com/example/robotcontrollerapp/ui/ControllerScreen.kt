@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -34,12 +35,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,6 +56,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -69,6 +74,7 @@ import com.example.robotcontrollerapp.model.WsState
 import com.example.robotcontrollerapp.util.fixedTextStyle
 import kotlin.collections.chunked
 import kotlin.collections.forEach
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -87,12 +93,22 @@ fun ControllerScreen(
     var showCamera by remember { mutableStateOf(false) }
 
     val dev = remember(devices) {
-        devices.filter { it.type != "sensor" && it.type != "motor" }
+        devices.filter { it.type != "sensor" && it.type != "motor" && it.type != "servo" }
     }
 
     val sensorNames = remember(devices) {
         devices.filter { it.type == "sensor" }.map { it.name }
     }
+
+    // todo вернуть
+//    val (motors, servos) = remember(devices) {
+//        devices.filter { it.type == "motor" } to devices.filter { it.type == "servo" }
+//    }
+    val motors = listOf(Device("uno_motor_6_7", -1, null, "motor"),
+        Device("uno_motor_8_9", -1, null, "motor"),
+        Device("uno_motor_2_3", -1, null, "motor"))
+    val servos = listOf(Device("uno_servo_6_180", -1, null, "servo"),
+        Device("uno_servo_7_180", -1, null, "servo"))
 
     DisposableEffect(sensorNames) {
         viewModel.subscribeSensors(sensorNames)
@@ -196,21 +212,24 @@ fun ControllerScreen(
                             }
                         }
                     }
-                    val w = remember(showCamera, sensorData.size, dev.size) {
+                    val w = remember(showCamera, sensorData.size, dev.size, servos.size, motors.size) {
                         if(showCamera) {
                             when {
                                 sensorData.isEmpty() -> 1.5f
                                 dev.isEmpty() -> 1.5f
                                 sensorData.size <= 3 && dev.size <= 3 -> 1.2f
+                                motors.size > 2 && servos.isNotEmpty() -> 1.2f
                                 else -> 1f
                             }
-                        } else 0.7f
+                        } else if(motors.size > 2 && servos.isNotEmpty()) 1f else 0.7f
                     }
                     BottomPanel(
                         modifier = Modifier.weight(w).fillMaxWidth(),
-                        devices = devices,
+                        motors = motors,
+                        servos = servos,
                         onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) },
                         onSetMotorSpeedThrottled = { motor, speed -> viewModel.setMotorSpeedThrottled(motor, speed) },
+                        onSetServoAngle = { servo, angle -> viewModel.setServoAngle(servo, angle) },
                         onSetTankSpeed = { lm, ls, rm, rs -> viewModel.setTankSpeed(lm, ls, rm, rs) }
                     )
                 }
@@ -384,7 +403,9 @@ fun TopPanel(modifier: Modifier, sensorData: Map<String, Float>, dev: List<Devic
         }
     }
 }
-
+// TODO похоже нужно делать вообще отдельную панель слева под серво
+// todo но ещё нужно проверить, вдруг нормально зайдет под джойстик хотя бы компонент
+// todo если что уж под motorControl да сделаем отдельную панель слева где-то
 @Composable
 fun MotorsPanelLandscape(
     modifier: Modifier,
@@ -407,7 +428,7 @@ fun MotorsPanelLandscape(
             ) {
                 BoxWithConstraints {
                     val size = min(maxWidth, maxHeight) * 0.75f
-                    Joystick(
+                    Joystick( // todo ну допустим тут ещё понятно что делать и то нужно менять size верхней фигни
                         modifier = Modifier.fillMaxSize(),
                         size = size,
                         enabled = motors.isNotEmpty(),
@@ -438,7 +459,7 @@ fun MotorsPanelLandscape(
                 modifier = modifier.height(h * 0.65f),
                 panelSize = w * 0.4f
             ) {
-                MotorControl(
+                MotorControl( // todo вот тут мы вообще приехали полностью, конечная остановка
                     modifier = Modifier.fillMaxSize(),
                     motors = motors,
                     isNeedBackground = true,
@@ -461,60 +482,170 @@ fun MotorsPanelLandscape(
 @Composable
 fun BottomPanel(
     modifier: Modifier,
-    devices: List<Device>,
+    motors: List<Device>,
+    servos: List<Device>,
     onSetMotorSpeed: (Device, Int) -> Unit,
     onSetMotorSpeedThrottled: (Device, Int) -> Unit,
+    onSetServoAngle: (Device, Int) -> Unit,
     onSetTankSpeed: (leftMotor: Device, leftSpeed: Int, rightMotor: Device, rightSpeed: Int) -> Unit
 ) {
+    val firstServoAngle = remember(servos) {
+        servos.firstOrNull()?.name?.substringAfterLast("_")?.toFloatOrNull() ?: 180f
+    }
+    val secondServoAngle = remember(servos) {
+        servos.getOrNull(1)?.name?.substringAfterLast("_")?.toFloatOrNull() ?: 180f
+    }
+    val firstServoCenterValue = remember(firstServoAngle) {
+        val valueRange = 0f..firstServoAngle
+        valueRange.start + (valueRange.endInclusive - valueRange.start) / 2f
+    }
+    val secondServoCenterValue = remember(secondServoAngle) {
+        val valueRange = 0f..secondServoAngle
+        valueRange.start + (valueRange.endInclusive - valueRange.start) / 2f
+    }
+    val snapThreshold = 8f
+    var firstServoValue by remember(firstServoAngle) { mutableFloatStateOf(firstServoAngle / 2f) }
+    var secondServoValue by remember(secondServoAngle) { mutableFloatStateOf(secondServoAngle / 2f) }
+
+    val paddingMod = remember(servos.size) {
+        if(servos.size == 1) 48.dp else 24.dp
+    }
+
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        val motors = remember(devices) {
-            devices.filter { it.type == "motor" }
-        }
         when(motors.size) {
             in 0..2 -> {
                 BoxWithConstraints {
                     val size = min(maxWidth, maxHeight) * 0.7f
-                    Joystick(
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                        size = size,
-                        enabled = motors.isNotEmpty(),
-                        onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
-                            when(motors.size) {
-                                0 -> {
-                                    // нет моторов — ничего не делаем
+                    val servoWidth = maxWidth * 0.17f
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                        if(servos.isNotEmpty()) {
+                            val firstServo = servos.first()
+                            CurvedServoSlider(
+                                value = firstServoValue,
+                                onValueChange = { firstServoValue = it },
+                                onValueChangeFinished = { onSetServoAngle(firstServo, firstServoValue.toInt()) },
+                                valueRange = 0f..firstServoAngle,
+                                isLeftSlider = true,
+                                sliderWidth = 16.dp,
+                                thumbWidth = 14.dp,
+                                modifier = Modifier.width(servoWidth).height(size * 1.2f).offset(y = size * 0.1f)
+                            )
+                        }
+                        Joystick(
+                            size = size,
+                            enabled = motors.isNotEmpty(),
+                            onMotorsChanged = { leftPwmSigned, rightPwmSigned ->
+                                when(motors.size) {
+                                    0 -> {
+                                        // нет моторов — ничего не делаем
+                                    }
+                                    1 -> {
+                                        // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
+                                        val motor = motors[0]
+                                        // вызываем viewModel, передаём signed speed
+                                        onSetMotorSpeedThrottled(motor, leftPwmSigned)
+                                    }
+                                    else -> {
+                                        // два мотора - используем первые два как лев/право
+                                        val leftMotor = motors[0]
+                                        val rightMotor = motors[1]
+                                        onSetTankSpeed(leftMotor, leftPwmSigned, rightMotor, rightPwmSigned)
+                                    }
                                 }
-                                1 -> {
-                                    // один мотор — используем только Y (мы уже получили signed значение в leftPwmSigned)
-                                    val motor = motors[0]
-                                    // вызываем viewModel, передаём signed speed
-                                    onSetMotorSpeedThrottled(motor, leftPwmSigned)
+                            }
+                        )
+                        if(servos.isNotEmpty()) {
+                            val hasSecondServo = servos.size > 1
+                            CurvedServoSlider(
+                                value = secondServoValue,
+                                onValueChange = { secondServoValue = it },
+                                onValueChangeFinished = {
+                                    if (hasSecondServo) {
+                                        val secondServo = servos[1]
+                                        onSetServoAngle(secondServo, secondServoValue.toInt())
+                                    }
+                                },
+                                valueRange = 0f..secondServoAngle,
+                                isLeftSlider = false,
+                                sliderWidth = 16.dp,
+                                thumbWidth = 14.dp,
+                                enabled = hasSecondServo,
+                                modifier = Modifier.width(servoWidth).height(size * 1.2f).offset(y = size * 0.1f)
+                            )
+                        }
+                    }
+                }
+            }
+            else -> {
+                // три и более моторов
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+                    if(servos.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(horizontal = paddingMod)) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom, modifier = Modifier.weight(1f)) {
+                                Text(text = firstServoValue.toInt().toString(), color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold, style = fixedTextStyle)
+                                val firstServo = servos.first()
+                                Slider(
+                                    value = firstServoValue,
+                                    onValueChange = { newValue ->
+                                        firstServoValue = if (abs(newValue - firstServoCenterValue) <= snapThreshold) {
+                                            firstServoCenterValue
+                                        } else {
+                                            newValue
+                                        }
+                                    },
+                                    onValueChangeFinished = { onSetServoAngle(firstServo, firstServoValue.toInt()) },
+                                    valueRange = 0f..firstServoAngle,
+                                    steps = firstServoAngle.toInt(),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color.Black,
+                                        activeTrackColor = Color.DarkGray,
+                                        inactiveTrackColor = Color.Gray,
+                                        activeTickColor = Color.Transparent,
+                                        inactiveTickColor = Color.Transparent
+                                    )
+                                )
+                            }
+                            if(servos.size > 1) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom, modifier = Modifier.weight(1f)) {
+                                    Text(text = secondServoValue.toInt().toString(), color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold, style = fixedTextStyle)
+                                    val secondServo = servos[1]
+                                    Slider(
+                                        value = secondServoValue,
+                                        onValueChange = { newValue ->
+                                            secondServoValue = if (abs(newValue - secondServoCenterValue) <= snapThreshold) {
+                                                secondServoCenterValue
+                                            } else {
+                                                newValue
+                                            }
+                                        },
+                                        onValueChangeFinished = { onSetServoAngle(secondServo, secondServoValue.toInt()) },
+                                        valueRange = 0f..secondServoAngle,
+                                        steps = secondServoAngle.toInt(),
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = Color.Black,
+                                            activeTrackColor = Color.DarkGray,
+                                            inactiveTrackColor = Color.Gray,
+                                            activeTickColor = Color.Transparent,
+                                            inactiveTickColor = Color.Transparent
+                                        )
+                                    )
                                 }
-                                else -> {
-                                    // два мотора - используем первые два как лев/право
-                                    val leftMotor = motors[0]
-                                    val rightMotor = motors[1]
-                                    onSetTankSpeed(leftMotor, leftPwmSigned, rightMotor, rightPwmSigned)
-                                }
+                            }
+                        }
+                    }
+                    MotorControl(
+                        motors = motors,
+                        onCommand = { motorName, motorSpeed ->
+                            val motor = motors.find { it.name == motorName }
+                            if (motor != null) {
+                                onSetMotorSpeed(motor, motorSpeed)
+                            } else {
+                                // Сюда код не должен попасть, но это хорошая проверка
+                                Log.e("testMotorControl", "Ошибка: мотор с именем $motorName не найден!")
                             }
                         }
                     )
                 }
-            }
-            else -> {
-                // три или четыре мотора
-                MotorControl(
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    motors = motors,
-                    onCommand = { motorName, motorSpeed ->
-                        val motor = motors.find { it.name == motorName }
-                        if (motor != null) {
-                            onSetMotorSpeed(motor, motorSpeed)
-                        } else {
-                            // Сюда код не должен попасть, но это хорошая проверка
-                            Log.e("testMotorControl", "Ошибка: мотор с именем $motorName не найден!")
-                        }
-                    }
-                )
             }
         }
     }
