@@ -235,6 +235,7 @@ class RobotRepository @Inject constructor() {
     fun requestDevices() = wsClient.requestDevices()
     fun setMotorSpeed(name: String, speed: Int) = wsClient.setMotorSpeed(name, speed)
     fun setMotorSpeedThrottled(name: String, speed: Int) = wsClient.setMotorSpeedThrottled(name, speed)
+    fun setServoAngle(name: String, angle: Int) = wsClient.setServoAngle(name, angle)
     fun setTankSpeed(leftName: String, leftSpeed: Int, rightName: String, rightSpeed: Int) =
         wsClient.setTankSpeedsThrottled(leftName, leftSpeed, rightName, rightSpeed)
     fun setDeviceState(name: String, state: Boolean) = wsClient.setDeviceState(name, state)

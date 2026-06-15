@@ -53,6 +53,10 @@ class RobotControlViewModel @Inject constructor(
         repository.setMotorSpeedThrottled(device.name, speed)
     }
 
+    fun setServoAngle(device: Device, angle: Int) {
+        repository.setServoAngle(device.name, angle)
+    }
+
     fun setTankSpeed(left: Device, leftSpeed: Int, right: Device, rightSpeed: Int) {
         repository.setTankSpeed(left.name, leftSpeed, right.name, rightSpeed)
     }

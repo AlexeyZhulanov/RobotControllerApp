@@ -86,7 +86,7 @@ fun PinEditorScreen(
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val boardName by viewModel.boardName.collectAsStateWithLifecycle()
 
-    var savedAssigned by remember { mutableStateOf<Map<Int, Device>>(emptyMap()) }
+    var savedDevices by remember { mutableStateOf<List<Device>>(emptyList()) }
 
     var selectedTab by remember { mutableStateOf(ConfigTab.Local) }
     var selectedPin by remember { mutableStateOf<Int?>(null) }
@@ -116,14 +116,17 @@ fun PinEditorScreen(
         }
     }
 
+    // Только локальные пины
     val assigned = remember(devices) {
         buildMap {
             devices.forEach { device ->
-                put(device.pin, device)
-                // Если есть второй пин (pin2), добавляем и его.
-                // Он будет ссылаться на то же самое устройство.
-                device.pin2?.let { secondPin ->
-                    put(secondPin, device)
+                if(device.pin != -1) {
+                    put(device.pin, device)
+                    // Если есть второй пин (pin2), добавляем и его.
+                    // Он будет ссылаться на то же самое устройство.
+                    device.pin2?.let { secondPin ->
+                        put(secondPin, device)
+                    }
                 }
             }
         }.toMutableMap()
@@ -140,16 +143,16 @@ fun PinEditorScreen(
         if(remoteDevices.size >= 5) FabPosition.Center else FabPosition.End
     }
 
-    val hasUnsavedChanges = remember(assigned, onSaveClicked) {
+    val hasUnsavedChanges = remember(devices, onSaveClicked) {
         when {
-            savedAssigned.isEmpty() -> {
-                savedAssigned = assigned
+            savedDevices.isEmpty() -> {
+                savedDevices = devices
                 false
             }
-            savedAssigned == assigned -> false
+            savedDevices == devices -> false
             onSaveClicked -> {
                 onSaveClicked = false
-                savedAssigned = emptyMap()
+                savedDevices = emptyList()
                 false
             }
             else -> true

@@ -33,6 +33,7 @@ fun RemoteDeviceList(
                             Icon(
                                 painter = when (device.type) {
                                     "motor" -> painterResource(R.drawable.ic_engine)
+                                    "servo" -> painterResource(R.drawable.ic_servo)
                                     "led" -> painterResource(R.drawable.ic_bulb)
                                     "sensor" -> painterResource(R.drawable.ic_sensor)
                                     else -> painterResource(R.drawable.ic_help)

@@ -29,6 +29,7 @@ fun RemoteDeviceConfigDialog(
         listOf(
             DeviceTypeInfo("led", "Светодиод", R.drawable.ic_bulb),
             DeviceTypeInfo("motor", "Мотор", R.drawable.ic_engine),
+            DeviceTypeInfo("servo", "Сервопривод", R.drawable.ic_servo),
             DeviceTypeInfo("sensor", "Сенсор", R.drawable.ic_sensor)
         )
     }
@@ -46,7 +47,16 @@ fun RemoteDeviceConfigDialog(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Имя устройства") },
-                    placeholder = { Text("uno_motor_9_8") },
+                    placeholder = {
+                        val txt = when(selectedType.id) {
+                            "led" -> "uno_led13"
+                            "motor" -> "uno_motor_9_8"
+                            "servo" -> "uno_servo_6_180"
+                            "sensor" -> "uno_sensor_A0"
+                            else -> "uno_led13"
+                        }
+                        Text(txt)
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -58,7 +68,7 @@ fun RemoteDeviceConfigDialog(
                 )
 
                 Text(
-                    "Имя должно содержать пины, которыми будет управлять Uno.\nПримеры:\nuno_led13\nuno_motor_5_6",
+                    "Имя должно содержать пины, которыми будет управлять Uno.\nПримеры:\nuno_led13\nuno_motor_3_2\nuno_servo_6_180 (градусы)\nuno_sensor_A0",
                     style = MaterialTheme.typography.bodySmall
                 )
             }

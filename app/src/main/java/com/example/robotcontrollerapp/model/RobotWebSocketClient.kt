@@ -428,6 +428,15 @@ class RobotWebSocketClient(
         ))
     }
 
+    /** Установить угол сервопривода (0-360) */
+    fun setServoAngle(name: String, angle: Int) {
+        send(buildJson("action",
+            "device" to name,
+            "action" to "set_servo",
+            "value" to angle.coerceIn(0, 360)
+        ))
+    }
+
     /** Подписаться на обновления конкретного сенсора */
     fun subscribeSensor(name: String) =
         send(buildJson("subscribe", "device" to name))
