@@ -100,15 +100,24 @@ fun ControllerScreen(
         devices.filter { it.type == "sensor" }.map { it.name }
     }
 
-    // todo вернуть
-//    val (motors, servos) = remember(devices) {
-//        devices.filter { it.type == "motor" } to devices.filter { it.type == "servo" }
-//    }
-    val motors = listOf(Device("uno_motor_6_7", -1, null, "motor"),
-        Device("uno_motor_8_9", -1, null, "motor"),
-        Device("uno_motor_2_3", -1, null, "motor"))
-    val servos = listOf(Device("uno_servo_6_180", -1, null, "servo"),
-        Device("uno_servo_7_180", -1, null, "servo"))
+    val (motors, servos) = remember(devices) {
+        devices.filter { it.type == "motor" } to devices.filter { it.type == "servo" }
+    }
+
+    val firstServoAngle = remember(servos) {
+        servos.firstOrNull()?.name?.substringAfterLast("_")?.toFloatOrNull() ?: 180f
+    }
+    val secondServoAngle = remember(servos) {
+        servos.getOrNull(1)?.name?.substringAfterLast("_")?.toFloatOrNull() ?: 180f
+    }
+    val firstServoCenterValue = remember(firstServoAngle) {
+        val valueRange = 0f..firstServoAngle
+        valueRange.start + (valueRange.endInclusive - valueRange.start) / 2f
+    }
+    val secondServoCenterValue = remember(secondServoAngle) {
+        val valueRange = 0f..secondServoAngle
+        valueRange.start + (valueRange.endInclusive - valueRange.start) / 2f
+    }
 
     DisposableEffect(sensorNames) {
         viewModel.subscribeSensors(sensorNames)
@@ -169,7 +178,13 @@ fun ControllerScreen(
                     height = bottomHeight,
                     width = bottomWidth,
                     devices = dev,
-                    onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) }
+                    servos = servos,
+                    firstServoAngle = firstServoAngle,
+                    secondServoAngle = secondServoAngle,
+                    firstServoCenterValue = firstServoCenterValue,
+                    secondServoCenterValue = secondServoCenterValue,
+                    onDeviceToggle = { d, on -> viewModel.toggleDevice(d, on) },
+                    onSetServoAngle = { servo, angle -> viewModel.setServoAngle(servo, angle) },
                 )
 
                 // Джойстик
@@ -177,7 +192,7 @@ fun ControllerScreen(
                     modifier = Modifier.align(Alignment.BottomEnd),
                     h = maxH,
                     w = maxW,
-                    devices = devices,
+                    motors = motors,
                     onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) },
                     onSetMotorSpeedThrottled = { motor, speed -> viewModel.setMotorSpeedThrottled(motor, speed) },
                     onSetTankSpeed = { lm, ls, rm, rs -> viewModel.setTankSpeed(lm, ls, rm, rs) }
@@ -227,6 +242,10 @@ fun ControllerScreen(
                         modifier = Modifier.weight(w).fillMaxWidth(),
                         motors = motors,
                         servos = servos,
+                        firstServoAngle = firstServoAngle,
+                        secondServoAngle = secondServoAngle,
+                        firstServoCenterValue = firstServoCenterValue,
+                        secondServoCenterValue = secondServoCenterValue,
                         onSetMotorSpeed = { motor, speed -> viewModel.setMotorSpeed(motor, speed) },
                         onSetMotorSpeedThrottled = { motor, speed -> viewModel.setMotorSpeedThrottled(motor, speed) },
                         onSetServoAngle = { servo, angle -> viewModel.setServoAngle(servo, angle) },
@@ -403,22 +422,17 @@ fun TopPanel(modifier: Modifier, sensorData: Map<String, Float>, dev: List<Devic
         }
     }
 }
-// TODO похоже нужно делать вообще отдельную панель слева под серво
-// todo но ещё нужно проверить, вдруг нормально зайдет под джойстик хотя бы компонент
-// todo если что уж под motorControl да сделаем отдельную панель слева где-то
+
 @Composable
 fun MotorsPanelLandscape(
     modifier: Modifier,
     h: Dp,
     w: Dp,
-    devices: List<Device>,
+    motors: List<Device>,
     onSetMotorSpeed: (Device, Int) -> Unit,
     onSetMotorSpeedThrottled: (Device, Int) -> Unit,
     onSetTankSpeed: (leftMotor: Device, leftSpeed: Int, rightMotor: Device, rightSpeed: Int) -> Unit
 ) {
-    val motors = remember(devices) {
-        devices.filter { it.type == "motor" }
-    }
     when(motors.size) {
         0 -> {} // нет моторов - даже не показываем панель
         in 1..2 -> {
@@ -428,7 +442,7 @@ fun MotorsPanelLandscape(
             ) {
                 BoxWithConstraints {
                     val size = min(maxWidth, maxHeight) * 0.75f
-                    Joystick( // todo ну допустим тут ещё понятно что делать и то нужно менять size верхней фигни
+                    Joystick(
                         modifier = Modifier.fillMaxSize(),
                         size = size,
                         enabled = motors.isNotEmpty(),
@@ -459,7 +473,7 @@ fun MotorsPanelLandscape(
                 modifier = modifier.height(h * 0.65f),
                 panelSize = w * 0.4f
             ) {
-                MotorControl( // todo вот тут мы вообще приехали полностью, конечная остановка
+                MotorControl(
                     modifier = Modifier.fillMaxSize(),
                     motors = motors,
                     isNeedBackground = true,
@@ -484,26 +498,16 @@ fun BottomPanel(
     modifier: Modifier,
     motors: List<Device>,
     servos: List<Device>,
+    firstServoAngle: Float,
+    secondServoAngle: Float,
+    firstServoCenterValue: Float,
+    secondServoCenterValue: Float,
+    snapThreshold: Float = 8f,
     onSetMotorSpeed: (Device, Int) -> Unit,
     onSetMotorSpeedThrottled: (Device, Int) -> Unit,
     onSetServoAngle: (Device, Int) -> Unit,
     onSetTankSpeed: (leftMotor: Device, leftSpeed: Int, rightMotor: Device, rightSpeed: Int) -> Unit
 ) {
-    val firstServoAngle = remember(servos) {
-        servos.firstOrNull()?.name?.substringAfterLast("_")?.toFloatOrNull() ?: 180f
-    }
-    val secondServoAngle = remember(servos) {
-        servos.getOrNull(1)?.name?.substringAfterLast("_")?.toFloatOrNull() ?: 180f
-    }
-    val firstServoCenterValue = remember(firstServoAngle) {
-        val valueRange = 0f..firstServoAngle
-        valueRange.start + (valueRange.endInclusive - valueRange.start) / 2f
-    }
-    val secondServoCenterValue = remember(secondServoAngle) {
-        val valueRange = 0f..secondServoAngle
-        valueRange.start + (valueRange.endInclusive - valueRange.start) / 2f
-    }
-    val snapThreshold = 8f
     var firstServoValue by remember(firstServoAngle) { mutableFloatStateOf(firstServoAngle / 2f) }
     var secondServoValue by remember(secondServoAngle) { mutableFloatStateOf(secondServoAngle / 2f) }
 
@@ -652,10 +656,24 @@ fun BottomPanel(
 }
 
 @Composable
-fun BottomPanelLandscape(modifier: Modifier, height: Dp, width: Dp, devices: List<Device>, onDeviceToggle: (Device, Boolean) -> Unit) {
+fun BottomPanelLandscape(
+    modifier: Modifier,
+    height: Dp,
+    width: Dp,
+    devices: List<Device>,
+    servos: List<Device>,
+    firstServoAngle: Float,
+    secondServoAngle: Float,
+    firstServoCenterValue: Float,
+    secondServoCenterValue: Float,
+    snapThreshold: Float = 8f,
+    onDeviceToggle: (Device, Boolean) -> Unit,
+    onSetServoAngle: (Device, Int) -> Unit,
+) {
     val horizontalSpacing = 10.dp
     val count = devices.size
     val availableWidth = width - horizontalSpacing * (count - 1)
+    val emptyCoef = if(devices.isEmpty()) 0 else 1
 
     val maxCountInRow = remember(width) {
         floor(availableWidth / 45.dp)
@@ -665,9 +683,14 @@ fun BottomPanelLandscape(modifier: Modifier, height: Dp, width: Dp, devices: Lis
         else floor(count / maxCountInRow + 1f).toInt()
     }
 
+    var firstServoValue by remember(firstServoAngle) { mutableFloatStateOf(firstServoAngle / 2f) }
+    var secondServoValue by remember(secondServoAngle) { mutableFloatStateOf(secondServoAngle / 2f) }
+
     val verticalSpacing = 5.dp
-    val h = height * rowsCount + (verticalSpacing - 32.dp) * (rowsCount - 1)
-    if(devices.isNotEmpty()) {
+    val servoHeight = if(servos.isEmpty()) 0.dp else 80.dp
+    val servoPadding = if(servos.size == 1) 110.dp else 50.dp
+    val h = (height * rowsCount + (verticalSpacing - 32.dp) * (rowsCount - 1)) * emptyCoef + servoHeight
+    if(devices.isNotEmpty() || servos.isNotEmpty()) {
         SlideOutControlPanel(
             modifier = modifier.width(width).height(h),
             panelSize = h,
@@ -677,7 +700,7 @@ fun BottomPanelLandscape(modifier: Modifier, height: Dp, width: Dp, devices: Lis
             val availableHeight = height - 32.dp
             val cellWidth = availableWidth / maxCountInRow
             val cellSize = minOf(cellWidth, availableHeight)
-            val deviceRows = devices.reversed().chunked(maxCountInRow).reversed()
+            val deviceRows = if(devices.isEmpty()) listOf() else devices.reversed().chunked(maxCountInRow).reversed()
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(verticalSpacing), horizontalAlignment = Alignment.CenterHorizontally) {
                 deviceRows.forEach { deviceRow ->
                     Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
@@ -690,6 +713,62 @@ fun BottomPanelLandscape(modifier: Modifier, height: Dp, width: Dp, devices: Lis
                                     isLandscape = true,
                                     device = device,
                                     onDeviceToggle = { d, on -> onDeviceToggle(d, on) }
+                                )
+                            }
+                        }
+                    }
+                }
+                if(servos.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.Bottom,
+                        modifier = Modifier.padding(start = servoPadding, end = servoPadding, bottom = 5.dp)
+                            .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(12.dp))) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom, modifier = Modifier.weight(1f)) {
+                            Text(text = firstServoValue.toInt().toString(), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, style = fixedTextStyle)
+                            val firstServo = servos.first()
+                            Slider(
+                                value = firstServoValue,
+                                onValueChange = { newValue ->
+                                    firstServoValue = if (abs(newValue - firstServoCenterValue) <= snapThreshold) {
+                                        firstServoCenterValue
+                                    } else {
+                                        newValue
+                                    }
+                                },
+                                onValueChangeFinished = { onSetServoAngle(firstServo, firstServoValue.toInt()) },
+                                valueRange = 0f..firstServoAngle,
+                                steps = firstServoAngle.toInt(),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color(0xFFF0F0F0),
+                                    activeTrackColor = Color(0xFFBFBFBF),
+                                    inactiveTrackColor = Color(0xFFF0F0F0),
+                                    activeTickColor = Color.Transparent,
+                                    inactiveTickColor = Color.Transparent
+                                )
+                            )
+                        }
+                        if(servos.size > 1) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom, modifier = Modifier.weight(1f)) {
+                                Text(text = secondServoValue.toInt().toString(), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, style = fixedTextStyle)
+                                val secondServo = servos[1]
+                                Slider(
+                                    value = secondServoValue,
+                                    onValueChange = { newValue ->
+                                        secondServoValue = if (abs(newValue - secondServoCenterValue) <= snapThreshold) {
+                                            secondServoCenterValue
+                                        } else {
+                                            newValue
+                                        }
+                                    },
+                                    onValueChangeFinished = { onSetServoAngle(secondServo, secondServoValue.toInt()) },
+                                    valueRange = 0f..secondServoAngle,
+                                    steps = secondServoAngle.toInt(),
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFFF0F0F0),
+                                        activeTrackColor = Color(0xFFF0F0F0),
+                                        inactiveTrackColor = Color(0xFFBFBFBF),
+                                        activeTickColor = Color.Transparent,
+                                        inactiveTickColor = Color.Transparent
+                                    )
                                 )
                             }
                         }
