@@ -66,6 +66,14 @@ class PinEditorViewModel @Inject constructor(
             if (d.type == "motor" && d.pin2 != null) {
                 sb.append(",\"pin2\":${d.pin2}")
             }
+            if (d.type.contains("motor") || d.type == "sonar") {
+                sb.append(",\"direction\":\"${d.direction}\"")
+            }
+            if (d.type == "sonar") {
+                sb.append(",\"criticalDist\":${d.criticalDist}")
+                sb.append(",\"warningDist\":${d.warningDist}")
+                sb.append(",\"safeSpeed\":${d.safeSpeed}")
+            }
             sb.append("}")
             if (i != devices.lastIndex) sb.append(",")
         }

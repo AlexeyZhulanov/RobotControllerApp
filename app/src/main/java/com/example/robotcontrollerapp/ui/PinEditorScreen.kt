@@ -369,11 +369,13 @@ fun PinEditorScreen(
             if (showRemoteDeviceDialog) {
                 RemoteDeviceConfigDialog(
                     onDismiss = { showRemoteDeviceDialog = false },
-                    onConfirm = { name, type ->
+                    onConfirm = { name, type, direction, crit, warn, safe ->
                         showRemoteDeviceDialog = false
 
                         // Создаем новое устройство с фиктивным пином
-                        val newDevice = Device(name = name, pin = -1, pin2 = null, type = type)
+                        val newDevice = Device(name = name, pin = -1, pin2 = null, type = type,
+                            direction = direction, criticalDist = crit, warningDist = warn,
+                            safeSpeed = safe)
 
                         viewModel.onDeviceSelected(newDevice)
                     }
