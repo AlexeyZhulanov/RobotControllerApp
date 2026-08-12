@@ -48,7 +48,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -160,38 +159,39 @@ fun ControllerScreen(
                                 contentScale = ContentScale.Crop)
                         }
                     }
-                    Column(modifier = Modifier.align(Alignment.Center)) {
+                }
+
+                // Верхняя панель
+                Column(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
+                    TopBarLandscape(
+                        modifier = Modifier.fillMaxWidth(),
+                        height = topHeight,
+                        boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
+                        wsState = wsState,
+                        isScanning = isScanning,
+                        sensorData = sensorData,
+                        onSettingsClick = onOpenPinEditor,
+                        onCameraClick = { showCamera = !showCamera }
+                    )
+                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                         sonarData.forEach { (device, value) ->
                             val v = value.toInt()
                             key(device.name) {
                                 val color = remember(v) {
                                     when(v) {
-                                        in 0..device.criticalDist -> Color.Red
+                                        in 0..device.criticalDist -> Color(0xFFFF6B6B) // Coral Red
                                         in device.criticalDist + 1..device.warningDist -> Color.Yellow
                                         else -> Color.White
                                     }
                                 }
-                                Row {
-                                    Icon(painter = painterResource(R.drawable.ic_parking),
-                                        contentDescription = null, tint = color)
-                                    Text(text = "${device.direction}: $v", color = color)
+                                Row(Modifier.background(Color.Black.copy(alpha = 0.3f)).padding(3.dp)) {
+                                    Icon(painter = painterResource(R.drawable.ic_parking), contentDescription = null, tint = color)
+                                    Text(text = "${device.direction}: $v cm", color = color)
                                 }
                             }
                         }
                     }
                 }
-
-                // Верхняя панель
-                TopBarLandscape(
-                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
-                    height = topHeight,
-                    boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
-                    wsState = wsState,
-                    isScanning = isScanning,
-                    sensorData = sensorData,
-                    onSettingsClick = onOpenPinEditor,
-                    onCameraClick = { showCamera = !showCamera }
-                )
 
                 // Нижняя панель
                 BottomPanelLandscape(
@@ -222,25 +222,6 @@ fun ControllerScreen(
         } else {
             // Книжная ориентация
             Box(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-                Column(modifier = Modifier.align(BiasAlignment(0f, 0.3f))) {
-                    sonarData.forEach { (device, value) ->
-                        val v = value.toInt()
-                        key(device.name) {
-                            val color = remember(v) {
-                                when(v) {
-                                    in 0..device.criticalDist -> Color.Red
-                                    in device.criticalDist + 1..device.warningDist -> Color.Yellow
-                                    else -> Color.White
-                                }
-                            }
-                            Row {
-                                Icon(painter = painterResource(R.drawable.ic_parking),
-                                    contentDescription = null, tint = color)
-                                Text(text = "${device.direction}: $v", color = color)
-                            }
-                        }
-                    }
-                }
                 TopBar(
                     modifier = Modifier.padding(top = 8.dp).align(Alignment.TopCenter),
                     boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
@@ -277,6 +258,24 @@ fun ControllerScreen(
                                 else -> 1f
                             }
                         } else if(motors.size > 2 && servos.isNotEmpty()) 1f else 0.7f
+                    }
+                    Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                        sonarData.forEach { (device, value) ->
+                            val v = value.toInt()
+                            key(device.name) {
+                                val color = remember(v) {
+                                    when(v) {
+                                        in 0..device.criticalDist -> Color.Red
+                                        in device.criticalDist + 1..device.warningDist -> Color.Yellow
+                                        else -> Color.White
+                                    }
+                                }
+                                Row {
+                                    Icon(painter = painterResource(R.drawable.ic_parking), contentDescription = null, tint = color)
+                                    Text(text = "${device.direction}: $v cm", color = color)
+                                }
+                            }
+                        }
                     }
                     BottomPanel(
                         modifier = Modifier.weight(w).fillMaxWidth(),
@@ -556,7 +555,6 @@ fun BottomPanel(
     }
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        // todo сюда перенести сонар
         when(motors.size) {
             in 0..2 -> {
                 BoxWithConstraints {
