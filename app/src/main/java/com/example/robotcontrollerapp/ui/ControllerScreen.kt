@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -89,15 +90,16 @@ fun ControllerScreen(
     val boardInfo by viewModel.boardInfo.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val sensorData by viewModel.sensorData.collectAsStateWithLifecycle()
+    val sonarData by viewModel.sonarData.collectAsStateWithLifecycle()
     val cameraIp by viewModel.cameraIp.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
 
     val dev = remember(devices) {
-        devices.filter { it.type != "sensor" && it.type != "motor" && it.type != "servo" }
+        devices.filter { it.type != "sensor" && it.type != "motor" && it.type != "servo" && it.type != "sonar" }
     }
 
     val sensorNames = remember(devices) {
-        devices.filter { it.type == "sensor" }.map { it.name }
+        devices.filter { it.type == "sensor" || it.type == "sonar" }.map { it.name }
     }
 
     val (motors, servos) = remember(devices) {
@@ -158,6 +160,25 @@ fun ControllerScreen(
                                 contentScale = ContentScale.Crop)
                         }
                     }
+                    Column(modifier = Modifier.align(Alignment.Center)) {
+                        sonarData.forEach { (device, value) ->
+                            val v = value.toInt()
+                            key(device.name) {
+                                val color = remember(v) {
+                                    when(v) {
+                                        in 0..device.criticalDist -> Color.Red
+                                        in device.criticalDist + 1..device.warningDist -> Color.Yellow
+                                        else -> Color.White
+                                    }
+                                }
+                                Row {
+                                    Icon(painter = painterResource(R.drawable.ic_parking),
+                                        contentDescription = null, tint = color)
+                                    Text(text = "${device.direction}: $v", color = color)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Верхняя панель
@@ -201,6 +222,25 @@ fun ControllerScreen(
         } else {
             // Книжная ориентация
             Box(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Column(modifier = Modifier.align(BiasAlignment(0f, 0.3f))) {
+                    sonarData.forEach { (device, value) ->
+                        val v = value.toInt()
+                        key(device.name) {
+                            val color = remember(v) {
+                                when(v) {
+                                    in 0..device.criticalDist -> Color.Red
+                                    in device.criticalDist + 1..device.warningDist -> Color.Yellow
+                                    else -> Color.White
+                                }
+                            }
+                            Row {
+                                Icon(painter = painterResource(R.drawable.ic_parking),
+                                    contentDescription = null, tint = color)
+                                Text(text = "${device.direction}: $v", color = color)
+                            }
+                        }
+                    }
+                }
                 TopBar(
                     modifier = Modifier.padding(top = 8.dp).align(Alignment.TopCenter),
                     boardName = if(boardInfo.first.length < 2) "Unknown" else "${boardInfo.first} (${boardInfo.second})",
@@ -516,6 +556,7 @@ fun BottomPanel(
     }
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        // todo сюда перенести сонар
         when(motors.size) {
             in 0..2 -> {
                 BoxWithConstraints {

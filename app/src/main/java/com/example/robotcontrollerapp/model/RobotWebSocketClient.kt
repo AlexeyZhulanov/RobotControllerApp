@@ -491,14 +491,19 @@ class RobotWebSocketClient(
                     val pin = if (d.has("pin") && !d.isNull("pin")) d.optInt("pin", -1) else -1
                     val type = d.optString("type", "unknown")
                     // state may be boolean or int
-                    val stateVal = d.opt("state")
-                    val state = when (stateVal) {
+                    val state = when (val stateVal = d.opt("state")) {
                         is Boolean -> stateVal
                         is Number -> stateVal.toInt() != 0
                         else -> false
                     }
                     val pwm = if (d.has("pwmValue")) d.optInt("pwmValue", 0) else 0
-                    list.add(Device(name = name, pin = gpioToD(pin), type = type, state = state, pwm = pwm))
+                    val direction = d.optString("direction", "none")
+                    val criticalDist = if(d.has("criticalDist")) d.optInt("criticalDist", 5) else 5
+                    val warningDist = if(d.has("warningDist")) d.optInt("warningDist", 20) else 20
+                    val safeSpeed = if(d.has("safeSpeed")) d.optInt("safeSpeed", 100) else 100
+                    list.add(Device(name = name, pin = gpioToD(pin), type = type, state = state,
+                        pwm = pwm, direction = direction, criticalDist = criticalDist,
+                        warningDist = warningDist, safeSpeed = safeSpeed))
                 }
                 onDevicesList?.invoke(list)
                 return
@@ -547,8 +552,7 @@ class RobotWebSocketClient(
             // device_state (single device update broadcast)
             if (o.optString("cmd") == "device_state" && o.has("state")) {
                 val name = o.optString("device", o.optString("name"))
-                val stateVal = o.opt("state")
-                val state = when (stateVal) {
+                val state = when (val stateVal = o.opt("state")) {
                     is Boolean -> stateVal
                     is Number -> stateVal.toInt() != 0
                     else -> false

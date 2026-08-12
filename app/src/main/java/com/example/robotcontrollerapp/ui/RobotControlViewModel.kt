@@ -36,6 +36,18 @@ class RobotControlViewModel @Inject constructor(
         allSensors.filterKeys { it in mySubscriptions }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    private val sonarDev = devices.map { dev ->
+        dev.filter { it.type.trim().equals("sonar", ignoreCase = true) }.toSet()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+    val sonarData = combine(repository.sensorData, sonarDev) { allSensors, sonars ->
+        sonars.mapNotNull { device ->
+            allSensors[device.name]?.let { value ->
+                device to value
+            }
+        }.toMap()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     init {
         repository.startAutoConnect()
     }
@@ -59,14 +71,6 @@ class RobotControlViewModel @Inject constructor(
 
     fun setTankSpeed(left: Device, leftSpeed: Int, right: Device, rightSpeed: Int) {
         repository.setTankSpeed(left.name, leftSpeed, right.name, rightSpeed)
-    }
-
-    fun subscribeSensor(name: String) {
-        repository.subscribeSensor(name)
-    }
-
-    fun unsubscribeSensor(name: String) {
-        repository.unsubscribeSensor(name)
     }
 
     fun refreshBoardStatus() {

@@ -18,6 +18,7 @@ import java.net.DatagramSocket
 import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.milliseconds
 
 @Singleton
 class RobotRepository @Inject constructor() {
@@ -125,7 +126,7 @@ class RobotRepository @Inject constructor() {
                 }
 
                 prevState = state
-                delay(5000)
+                delay(5000.milliseconds)
             }
         }
     }
