@@ -65,6 +65,13 @@ class RobotWebSocketClient(
 
     @Volatile private var motorSenderJob: ScheduledFuture<*>? = null
 
+    // Интервал принудительной отправки (Keep-Alive)
+    private val motorKeepAliveMs: Long = 800L
+
+    // Время последней реальной отправки пакетов
+    @Volatile private var lastTankSendTimeMs = 0L
+    @Volatile private var lastSingleSendTimeMs = 0L
+
     // Callbacks
     var onMessageReceived: ((String) -> Unit)? = null
     var onLog: ((String) -> Unit)? = null
@@ -282,6 +289,10 @@ class RobotWebSocketClient(
             val m = pendingTank.get() ?: return@scheduleWithFixedDelay
             val last = lastTankSent.get()
 
+            val now = System.currentTimeMillis()
+            // Проверяем, не пора ли отправить принудительный пакет
+            val isKeepAlive = (now - lastTankSendTimeMs) >= motorKeepAliveMs
+
             // Вспомогательная функция для проверки, нужно ли затроттлить конкретный мотор
             fun shouldThrottleMotor(currentSpeed: Int, lastSpeed: Int): Boolean {
                 // ПРАВИЛО ОСТАНОВКИ: если сейчас нужно остановиться (0),
@@ -292,8 +303,9 @@ class RobotWebSocketClient(
                 return abs(currentSpeed - lastSpeed) < motorMinDeltaToSend
             }
 
-            // Блокируем отправку только если оба мотора удовлетворяют условиям троттлинга
-            if (last != null &&
+            // Блокируем отправку только если оба мотора удовлетворяют условиям троттлинга и нет флага Keep-Alive
+            if (!isKeepAlive &&
+                last != null &&
                 last.leftName == m.leftName &&
                 last.rightName == m.rightName &&
                 shouldThrottleMotor(m.leftSpeed, last.leftSpeed) &&
@@ -313,6 +325,7 @@ class RobotWebSocketClient(
             ))
 
             lastTankSent.set(m)
+            lastTankSendTimeMs = now // Запоминаем время успешной отправки
 
         }, 0L, delayMs, TimeUnit.MILLISECONDS)
 
@@ -368,9 +381,14 @@ class RobotWebSocketClient(
             val m = pendingMotorSingle.get() ?: return@scheduleWithFixedDelay
             val last = lastMotorSingleSent.get()
 
-            if (last != null && last.name == m.name) {
+            val now = System.currentTimeMillis()
+            val isKeepAlive = (now - lastSingleSendTimeMs) >= motorKeepAliveMs
+
+            // Если не Keep-Alive, проверяем дельту (и не глушим ли мы мотор в ноль)
+            if (!isKeepAlive && last != null && last.name == m.name) {
+                val isStopping = (m.speed == 0 && last.speed != 0) // Остановку отправляем всегда
                 val delta = abs(m.speed - last.speed)
-                if (delta < motorMinDeltaToSend) return@scheduleWithFixedDelay
+                if (!isStopping && delta < motorMinDeltaToSend) return@scheduleWithFixedDelay
             }
 
             send(buildJson(
@@ -381,6 +399,7 @@ class RobotWebSocketClient(
             ))
 
             lastMotorSingleSent.set(m)
+            lastSingleSendTimeMs = now // Запоминаем время успешной отправки
 
         }, 0L, delayMs, TimeUnit.MILLISECONDS)
 
